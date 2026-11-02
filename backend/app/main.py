@@ -4,14 +4,19 @@ Enforces DepEd Key Stage 3 Rules, OR-Tools CP-SAT Master Solving, and Dynamic Re
 """
 
 from contextlib import asynccontextmanager
+import logging
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
+
+logger = logging.getLogger("uvicorn.error")
 
 from app.database import engine, init_db
 from app.models import Department
@@ -45,6 +50,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    logger.error(f"[422 Validation Error] {request.method} {request.url.path}: {errors}")
+    msg_parts = []
+    for err in errors:
+        loc = " -> ".join(str(l) for l in err.get("loc", []) if l != "body")
+        msg = err.get("msg", "Invalid value")
+        msg_parts.append(f"{loc}: {msg}" if loc else msg)
+    summary = "Validation error: " + "; ".join(msg_parts)
+    return JSONResponse(
+        status_code=422,
+        content={"detail": summary, "errors": errors},
+    )
 
 # Register routers
 app.include_router(auth.router)

@@ -3,7 +3,7 @@ Pydantic schemas and Data Transfer Objects (DTOs) for API request/response valid
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field
 from app.models import ProgramType, TeacherStatus
 
@@ -203,24 +203,24 @@ class MasterScheduleResponse(BaseModel):
 
 # --- Generator Configuration & Time Allotments ---
 class SubjectAllotmentConfig(BaseModel):
-    duration_minutes: int = Field(default=60, ge=20, le=240)
-    required_weekly_loads: int = Field(default=4, ge=1, le=6)
+    duration_minutes: int = Field(default=60, ge=15, le=300)
+    required_weekly_loads: int = Field(default=4, ge=1, le=12)
     is_adviser_locked: Optional[bool] = Field(default=None)
     preferred_placement: Optional[str] = Field(default=None)
 
 
 class GenerateScheduleRequest(BaseModel):
-    period_duration_minutes: int = Field(default=60, ge=20, le=240)
-    subject_allotments: Optional[Dict[int, SubjectAllotmentConfig]] = None
+    period_duration_minutes: int = Field(default=60, ge=15, le=300)
+    subject_allotments: Optional[Dict[Union[int, str], SubjectAllotmentConfig]] = None
     track_subjects: Optional[Dict[str, List[int]]] = None  # Track code -> List[subject_id]
     target_section_ids: Optional[List[int]] = None  # Specific sections to generate schedule for (Grades 7 to 10)
     objective_strategy: str = Field(default="WORKLOAD_BALANCE")  # WORKLOAD_BALANCE, COMPACT_SCHEDULE, HYBRID
     prefer_morning_academic: bool = True
-    max_daily_hours: int = Field(default=6, ge=4, le=6)
-    max_consecutive_hours: int = Field(default=3, ge=2, le=4)
+    max_daily_hours: int = Field(default=6, ge=2, le=10)
+    max_consecutive_hours: int = Field(default=3, ge=1, le=8)
     room_collision_mode: str = Field(default="SOFT_PENALTY")  # SOFT_PENALTY, STRICT_ISOLATION
     preserve_locked_slots: bool = True
-    max_solve_time_seconds: float = Field(default=10.0, ge=3.0, le=30.0)
+    max_solve_time_seconds: float = Field(default=10.0, ge=1.0, le=120.0)
 
 
 # --- Class Load Prioritization & Substitution Dispatch ---

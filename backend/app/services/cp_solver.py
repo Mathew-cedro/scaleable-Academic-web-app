@@ -198,6 +198,10 @@ def generate_master_schedule(
                     return matched
 
         # If no track subjects matched, match subjects for this section's grade level or core standard subjects
+        if p_type in ("BEC", "REGULAR"):
+            core_matched = [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
+            return core_matched if core_matched else academic_subjects
+
         grade_matched = [s for s in academic_subjects if s.grade_level == sec_grade or s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
         return grade_matched if grade_matched else academic_subjects
 
@@ -759,6 +763,9 @@ def repair_schedule(
         existing_sub_ids = {s.subject_id for s in original_slots if s.section_id == sec.id and not s.is_locked}
         if existing_sub_ids:
             return [s for s in academic_subjects if s.id in existing_sub_ids]
+        if p_type in ("BEC", "REGULAR"):
+            core_matched = [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
+            return core_matched if core_matched else academic_subjects
         return [s for s in academic_subjects if s.grade_level == sec_grade or s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
 
     section_subjects: Dict[int, List[Subject]] = {c.id: get_repair_section_subjects(c) for c in sections}

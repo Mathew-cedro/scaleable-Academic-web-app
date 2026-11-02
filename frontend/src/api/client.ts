@@ -169,6 +169,47 @@ export interface ScheduleDeployResponse {
   department_summaries: DepartmentDeploySummary[];
 }
 
+export function formatErrorDetail(detail: any, fallback: string = "Request failed"): string {
+  if (!detail) return fallback;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((d: any) => {
+        if (!d) return "";
+        if (typeof d === "string") return d;
+        if (typeof d === "object") {
+          const loc = Array.isArray(d.loc)
+            ? d.loc.filter((x: any) => x !== "body").join(" -> ")
+            : "";
+          const msg = d.msg || d.message || JSON.stringify(d);
+          return loc ? `${loc}: ${msg}` : msg;
+        }
+        return String(d);
+      })
+      .filter(Boolean);
+    return messages.length > 0 ? messages.join("; ") : fallback;
+  }
+  if (typeof detail === "object") {
+    if (detail.message && typeof detail.message === "string") return detail.message;
+    if (detail.msg && typeof detail.msg === "string") return detail.msg;
+    if (detail.detail) return formatErrorDetail(detail.detail, fallback);
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return fallback;
+    }
+  }
+  return String(detail);
+}
+
+export async function parseErrorMessage(res: Response, defaultMsg: string): Promise<string> {
+  try {
+    const data = await res.json();
+    return formatErrorDetail(data?.detail || data?.message || data?.error, defaultMsg);
+  } catch {
+    return `${defaultMsg} (HTTP ${res.status})`;
+  }
+}
 
 export const api = {
   async listSavedSchedules(): Promise<SavedScheduleItem[]> {
@@ -184,8 +225,7 @@ export const api = {
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to save schedule snapshot");
+      throw new Error(await parseErrorMessage(res, "Failed to save schedule snapshot"));
     }
     return res.json();
   },
@@ -203,8 +243,7 @@ export const api = {
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to update saved schedule");
+      throw new Error(await parseErrorMessage(res, "Failed to update saved schedule"));
     }
     return res.json();
   },
@@ -214,8 +253,7 @@ export const api = {
       method: "DELETE",
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to delete saved schedule");
+      throw new Error(await parseErrorMessage(res, "Failed to delete saved schedule"));
     }
     return res.json();
   },
@@ -225,8 +263,7 @@ export const api = {
       method: "POST",
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to restore saved schedule");
+      throw new Error(await parseErrorMessage(res, "Failed to restore saved schedule"));
     }
     return res.json();
   },
@@ -243,8 +280,7 @@ export const api = {
       body: config ? JSON.stringify(config) : undefined,
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to generate schedule");
+      throw new Error(await parseErrorMessage(res, "Failed to generate schedule"));
     }
     return res.json();
   },
@@ -256,8 +292,7 @@ export const api = {
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to reassign teacher slots");
+      throw new Error(await parseErrorMessage(res, "Failed to reassign teacher slots"));
     }
     return res.json();
   },
@@ -269,8 +304,7 @@ export const api = {
       body: config ? JSON.stringify(config) : undefined,
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to execute schedule repair");
+      throw new Error(await parseErrorMessage(res, "Failed to execute schedule repair"));
     }
     return res.json();
   },
@@ -288,8 +322,7 @@ export const api = {
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to override slot");
+      throw new Error(await parseErrorMessage(res, "Failed to override slot"));
     }
     return res.json();
   },
@@ -309,8 +342,7 @@ export const api = {
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to assign schedule slot");
+      throw new Error(await parseErrorMessage(res, "Failed to assign schedule slot"));
     }
     return res.json();
   },
@@ -320,8 +352,7 @@ export const api = {
       method: "DELETE",
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to unassign schedule slot");
+      throw new Error(await parseErrorMessage(res, "Failed to unassign schedule slot"));
     }
     return res.json();
   },
@@ -333,9 +364,9 @@ export const api = {
       body: JSON.stringify({ slot_id_a: slotIdA, slot_id_b: slotIdB }),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to swap slots");
+      throw new Error(await parseErrorMessage(res, "Failed to swap slots"));
     }
+    return res.json();
     return res.json();
   },
 
@@ -375,8 +406,7 @@ export const api = {
       body: JSON.stringify(cleanPayload),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to create teacher");
+      throw new Error(await parseErrorMessage(res, "Failed to create teacher"));
     }
     return res.json();
   },
@@ -404,8 +434,7 @@ export const api = {
       body: JSON.stringify(cleanPayload),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to update teacher");
+      throw new Error(await parseErrorMessage(res, "Failed to update teacher"));
     }
     return res.json();
   },
@@ -415,8 +444,7 @@ export const api = {
       method: "DELETE",
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to delete teacher");
+      throw new Error(await parseErrorMessage(res, "Failed to delete teacher"));
     }
     return res.json();
   },
@@ -434,8 +462,7 @@ export const api = {
       body: JSON.stringify(data),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to create section");
+      throw new Error(await parseErrorMessage(res, "Failed to create section"));
     }
     return res.json();
   },
@@ -453,8 +480,7 @@ export const api = {
       body: JSON.stringify({ sections }),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to create sections in batch");
+      throw new Error(await parseErrorMessage(res, "Failed to create sections in batch"));
     }
     return res.json();
   },
@@ -475,8 +501,7 @@ export const api = {
       body: JSON.stringify(data),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to update section");
+      throw new Error(await parseErrorMessage(res, "Failed to update section"));
     }
     return res.json();
   },
@@ -488,8 +513,7 @@ export const api = {
       method: "DELETE",
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to delete section");
+      throw new Error(await parseErrorMessage(res, "Failed to delete section"));
     }
     return res.json();
   },
@@ -563,8 +587,7 @@ export const api = {
       body: JSON.stringify({ username, password, remember_me }),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Authentication failed");
+      throw new Error(await parseErrorMessage(res, "Authentication failed"));
     }
     return res.json();
   },
@@ -576,8 +599,7 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Session expired or invalid");
+      throw new Error(await parseErrorMessage(res, "Session expired or invalid"));
     }
     return res.json();
   },
@@ -602,8 +624,7 @@ export const api = {
       body: JSON.stringify(data),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to create subject");
+      throw new Error(await parseErrorMessage(res, "Failed to create subject"));
     }
     return res.json();
   },
@@ -615,8 +636,7 @@ export const api = {
       body: JSON.stringify(data),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to update subject");
+      throw new Error(await parseErrorMessage(res, "Failed to update subject"));
     }
     return res.json();
   },
@@ -626,8 +646,7 @@ export const api = {
       method: "DELETE",
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to delete subject");
+      throw new Error(await parseErrorMessage(res, "Failed to delete subject"));
     }
     return res.json();
   },
@@ -639,8 +658,7 @@ export const api = {
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: "Failed to deploy schedule" }));
-      throw new Error(err.detail || "Failed to deploy schedule");
+      throw new Error(await parseErrorMessage(res, "Failed to deploy schedule"));
     }
     return res.json();
   },

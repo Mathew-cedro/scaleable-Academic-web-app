@@ -13,7 +13,7 @@ import {
   History,
 } from "lucide-react";
 
-import { api } from "./api/client";
+import { api, formatErrorDetail } from "./api/client";
 import type {
   CreateSavedSchedulePayload,
   GenerateScheduleRequest,
@@ -151,8 +151,9 @@ export default function App() {
     return getAllRoomConflicts(slots, sections, teachers);
   }, [slots, sections, teachers]);
 
-  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
-    setToast({ message, type });
+  const showToast = (message: any, type: "success" | "error" | "info" = "success") => {
+    const formatted = typeof message === "string" ? message : formatErrorDetail(message, "An unexpected event occurred");
+    setToast({ message: formatted, type });
     setTimeout(() => setToast(null), 4500);
   };
 
