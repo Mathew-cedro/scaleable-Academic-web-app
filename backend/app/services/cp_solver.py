@@ -269,8 +269,25 @@ def generate_master_schedule(
             # Exactly one teacher assigned per section per subject
             p1_model.Add(sum(Y[t.id, c.id, s.id] for t in eligible_teachers) == 1)
 
-    # Department-level Workload Balancing & Advisory Affinity
     p1_penalties = []
+
+    # Teacher Workload Constraints (DepEd Magna Carta / RA 4670)
+    for t in active_teachers:
+        t_loads = [
+            Y[t.id, c.id, s.id] * ((s.required_weekly_loads or 4) if s else 4)
+            for c in sections
+            for s in section_subjects[c.id]
+            if (t.id, c.id, s.id) in Y
+        ]
+        t_max_weekly = min(getattr(t, "max_weekly_hours", 30) or 30, 28)
+        p1_model.Add(sum(t_loads) <= t_max_weekly)
+        if t.is_adviser and t.advisory_section_id:
+            # Soft incentive to keep advisers at or under 24 loads (6 sections)
+            adv_overload = p1_model.NewIntVar(0, 28, f"adv_overload_{t.id}")
+            p1_model.Add(adv_overload >= sum(t_loads) - 24)
+            p1_penalties.append(500 * adv_overload)
+
+    # Department-level Workload Balancing & Advisory Affinity
     for d_id, d_t_list in dept_teachers.items():
         if not d_t_list:
             continue
@@ -287,12 +304,12 @@ def generate_master_schedule(
                 for s in section_subjects[c.id]
                 if (t.id, c.id, s.id) in Y
             )
-            t_sec_cap = max(avg_secs, 6 if (t.is_adviser and t.advisory_section_id) else 7)
+            t_sec_cap = max(avg_secs, 7)
             p1_model.Add(t_assigned_secs <= t_sec_cap)
             p1_model.Add(t_assigned_secs <= max_sec)
             p1_model.Add(t_assigned_secs >= min_sec)
 
-        p1_penalties.append(500 * (max_sec - min_sec))
+        p1_penalties.append(200 * (max_sec - min_sec))
 
     # Preference Incentives:
     # 1. Advisers teaching their own advisory section
@@ -381,9 +398,8 @@ def generate_master_schedule(
             for d in days:
                 p2_m.Add(sum(p2_X[t_id, c_id, s_id, d, p] for p in sec_periods if (t_id, c_id, s_id, d, p) in p2_X) <= max_daily_loads)
 
-            # Values Education / EsP runs Tuesday to Friday (skip Monday)
-            if sub and ("values" in sub.name.lower() or "esp" in sub.name.lower()):
-                p2_m.Add(sum(p2_X[t_id, c_id, s_id, 0, p] for p in sec_periods if (t_id, c_id, s_id, 0, p) in p2_X) == 0)
+            # Values Education / EsP runs Tuesday to Friday when load permits (Monday Period 1 is already protected by Homeroom lock)
+            # Soft placement penalty below encourages keeping Monday free for EsP unless a teacher's high load requires it.
 
         # Constraint 3: Section Collision Free (at most 1 class at any d, p)
         for c in sections:
@@ -537,6 +553,8 @@ def generate_master_schedule(
                                 placement_penalties.append(15 * p2_X[t_id, c_id, s_id, d, p])
                             elif is_afternoon_pref and p <= 4:
                                 placement_penalties.append(15 * p2_X[t_id, c_id, s_id, d, p])
+                            if d == 0 and sub and ("values" in sub.name.lower() or "esp" in sub.name.lower()):
+                                placement_penalties.append(20 * p2_X[t_id, c_id, s_id, d, p])
 
         obj_components = list(room_clash_penalties) + list(placement_penalties)
         if obj_components:
