@@ -53,6 +53,23 @@ def is_special_track(program_type: Optional[str]) -> bool:
     return norm not in ("BEC", "REGULAR", "STANDARD", "GENERAL")
 
 
+def is_track_matching_subject(program_type: Optional[str], subject_name: str) -> bool:
+    """Returns True if the specialized subject belongs to the given curricular program track."""
+    t_code = (program_type or "").upper().strip()
+    s_name = (subject_name or "").lower().strip()
+    if t_code in ("BEC", "REGULAR", "STANDARD", "GENERAL"):
+        return False
+    if t_code == "SPS" and any(k in s_name for k in ["sport", "athlet", "fitness", "kinesiology", "pe"]):
+        return True
+    if t_code == "STE" and any(k in s_name for k in ["research", "robot", "biotech", "calculus", "advanced", "stem"]):
+        return True
+    if t_code == "SPA" and any(k in s_name for k in ["art", "music", "dance", "theater", "creative"]):
+        return True
+    if t_code == "SPJ" and any(k in s_name for k in ["journalism", "press", "broadcast", "writer", "radio"]):
+        return True
+    return False
+
+
 def generate_master_schedule(
     session: Session,
     config: Optional[GenerateScheduleRequest] = None,
@@ -202,8 +219,12 @@ def generate_master_schedule(
             core_matched = [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
             return core_matched if core_matched else academic_subjects
 
-        grade_matched = [s for s in academic_subjects if s.grade_level == sec_grade or s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
-        return grade_matched if grade_matched else academic_subjects
+        special_matched = [
+            s for s in academic_subjects
+            if s.id in (1, 2, 3, 4, 5, 6, 7, 8)
+            or (is_track_matching_subject(p_type, s.name) and (s.grade_level == sec_grade or s.grade_level == 0))
+        ]
+        return special_matched if special_matched else [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
 
     section_subjects: Dict[int, List[Subject]] = {c.id: get_section_subjects(c) for c in sections}
 
@@ -256,6 +277,9 @@ def generate_master_schedule(
         max_sec = p1_model.NewIntVar(0, len(sections), f"dept_{d_id}_max_sec")
         min_sec = p1_model.NewIntVar(0, len(sections), f"dept_{d_id}_min_sec")
 
+        dept_total_secs = sum(1 for c in sections for s in section_subjects[c.id] if s.department_id == d_id)
+        avg_secs = (dept_total_secs + len(d_t_list) - 1) // len(d_t_list)
+
         for t in d_t_list:
             t_assigned_secs = sum(
                 Y[t.id, c.id, s.id]
@@ -263,10 +287,12 @@ def generate_master_schedule(
                 for s in section_subjects[c.id]
                 if (t.id, c.id, s.id) in Y
             )
+            t_sec_cap = max(avg_secs, 6 if (t.is_adviser and t.advisory_section_id) else 7)
+            p1_model.Add(t_assigned_secs <= t_sec_cap)
             p1_model.Add(t_assigned_secs <= max_sec)
             p1_model.Add(t_assigned_secs >= min_sec)
 
-        p1_penalties.append(200 * (max_sec - min_sec))
+        p1_penalties.append(500 * (max_sec - min_sec))
 
     # Preference Incentives:
     # 1. Advisers teaching their own advisory section
@@ -330,7 +356,10 @@ def generate_master_schedule(
         p2_X = {}
         for (t_id, c_id, s_id) in assigned_pairs:
             sec = section_map[c_id]
-            sec_periods = all_periods if is_special_track(sec.program_type) else [1, 2, 3, 4, 5, 6, 7]
+            is_specialized = is_special_track(sec.program_type) and (
+                s_id > 8 or is_track_matching_subject(sec.program_type, subject_map[s_id].name if s_id in subject_map else "")
+            )
+            sec_periods = all_periods if is_specialized else [1, 2, 3, 4, 5, 6, 7]
             for d in days:
                 for p in sec_periods:
                     p2_X[t_id, c_id, s_id, d, p] = p2_m.NewBoolVar(f"x_{t_id}_{c_id}_{s_id}_{d}_{p}")
@@ -489,13 +518,25 @@ def generate_master_schedule(
                 is_morning_pref = any(k in name_lower for k in ["math", "science", "english", "filipino", "araling", "ap"])
                 is_afternoon_pref = any(k in name_lower for k in ["mapeh", "tle", "technology", "livelihood", "pe", "arts", "music", "research"])
 
+            is_specialized = is_special_track(sec.program_type) and (
+                s_id > 8 or is_track_matching_subject(sec.program_type, sub.name)
+            )
+
             for d in days:
                 for p in sec_periods:
                     if (t_id, c_id, s_id, d, p) in p2_X:
-                        if is_morning_pref and p >= 5:
-                            placement_penalties.append(15 * p2_X[t_id, c_id, s_id, d, p])
-                        elif is_afternoon_pref and p <= 4:
-                            placement_penalties.append(15 * p2_X[t_id, c_id, s_id, d, p])
+                        if is_specialized:
+                            if p in (8, 9):
+                                placement_penalties.append(-250 * p2_X[t_id, c_id, s_id, d, p])
+                            else:
+                                placement_penalties.append(150 * p2_X[t_id, c_id, s_id, d, p])
+                        else:
+                            if p in (8, 9):
+                                placement_penalties.append(250 * p2_X[t_id, c_id, s_id, d, p])
+                            elif is_morning_pref and p >= 5:
+                                placement_penalties.append(15 * p2_X[t_id, c_id, s_id, d, p])
+                            elif is_afternoon_pref and p <= 4:
+                                placement_penalties.append(15 * p2_X[t_id, c_id, s_id, d, p])
 
         obj_components = list(room_clash_penalties) + list(placement_penalties)
         if obj_components:
@@ -595,7 +636,10 @@ def generate_master_schedule(
     # 2. Add solved academic subject slots
     for (t_id, c_id, s_id) in assigned_pairs:
         sec = section_map[c_id]
-        sec_periods = all_periods if is_special_track(sec.program_type) else [1, 2, 3, 4, 5, 6, 7]
+        is_specialized = is_special_track(sec.program_type) and (
+            s_id > 8 or is_track_matching_subject(sec.program_type, subject_map[s_id].name if s_id in subject_map else "")
+        )
+        sec_periods = all_periods if is_specialized else [1, 2, 3, 4, 5, 6, 7]
         for d in days:
             for p in sec_periods:
                 if (t_id, c_id, s_id, d, p) in X and p2_solver.Value(X[t_id, c_id, s_id, d, p]) == 1:
@@ -766,7 +810,12 @@ def repair_schedule(
         if p_type in ("BEC", "REGULAR"):
             core_matched = [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
             return core_matched if core_matched else academic_subjects
-        return [s for s in academic_subjects if s.grade_level == sec_grade or s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
+        special_matched = [
+            s for s in academic_subjects
+            if s.id in (1, 2, 3, 4, 5, 6, 7, 8)
+            or (is_track_matching_subject(p_type, s.name) and (s.grade_level == sec_grade or s.grade_level == 0))
+        ]
+        return special_matched if special_matched else [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
 
     section_subjects: Dict[int, List[Subject]] = {c.id: get_repair_section_subjects(c) for c in sections}
 
@@ -829,7 +878,10 @@ def repair_schedule(
         if not sub:
             continue
         c = section_map.get(c_id)
-        sec_periods = all_periods if is_special_track(c.program_type if c else None) else [1, 2, 3, 4, 5, 6, 7]
+        is_specialized = c and is_special_track(c.program_type) and (
+            s_id > 8 or is_track_matching_subject(c.program_type, sub.name if sub else "")
+        )
+        sec_periods = all_periods if is_specialized else [1, 2, 3, 4, 5, 6, 7]
         eligible = dept_teachers.get(sub.department_id, [])
         for t in eligible:
             for d in days:
@@ -887,11 +939,24 @@ def repair_schedule(
         sub = subject_map.get(s_id)
         if not sub:
             continue
-        pref = (sub.preferred_placement or "").upper().strip()
-        if pref == "MORNING" and p >= 5:
-            placement_penalties.append(50 * var)
-        elif pref == "AFTERNOON" and p <= 4:
-            placement_penalties.append(50 * var)
+        sec = section_map.get(c_id)
+        is_specialized = sec and is_special_track(sec.program_type) and (
+            s_id > 8 or is_track_matching_subject(sec.program_type, sub.name)
+        )
+        if is_specialized:
+            if p in (8, 9):
+                placement_penalties.append(-250 * var)
+            else:
+                placement_penalties.append(150 * var)
+        else:
+            if p in (8, 9):
+                placement_penalties.append(250 * var)
+            else:
+                pref = (sub.preferred_placement or "").upper().strip()
+                if pref == "MORNING" and p >= 5:
+                    placement_penalties.append(50 * var)
+                elif pref == "AFTERNOON" and p <= 4:
+                    placement_penalties.append(50 * var)
 
     # Collision constraint: Physical Room Minimization
     repair_rooms_to_sections: Dict[str, List[Section]] = {}
@@ -938,7 +1003,10 @@ def repair_schedule(
         if not sub:
             continue
         c = section_map.get(c_id)
-        sec_periods = all_periods if is_special_track(c.program_type if c else None) else [1, 2, 3, 4, 5, 6, 7]
+        is_specialized = c and is_special_track(c.program_type) and (
+            s_id > 8 or is_track_matching_subject(c.program_type, sub.name if sub else "")
+        )
+        sec_periods = all_periods if is_specialized else [1, 2, 3, 4, 5, 6, 7]
         eligible = dept_teachers.get(sub.department_id, [])
         all_slots = [
             X[t.id, c_id, s_id, d, p]

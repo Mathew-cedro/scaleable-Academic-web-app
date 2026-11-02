@@ -40,9 +40,9 @@ export const DEFAULT_MODULAR_TRACKS: ModularTrack[] = [
     badgeColor: "indigo",
     isDefault: true,
     isGradeSpecific: true,
-    subjectIds: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    subjectIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     gradeSubjects: {
-      7: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+      7: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
       8: [1, 2, 3, 4, 5, 6, 7, 8, 9],
       9: [1, 2, 3, 4, 5, 6, 7, 8, 9],
       10: [1, 2, 3, 4, 5, 6, 7, 8, 9],
@@ -72,12 +72,12 @@ export const DEFAULT_MODULAR_TRACKS: ModularTrack[] = [
     badgeColor: "amber",
     isDefault: true,
     isGradeSpecific: true,
-    subjectIds: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    subjectIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 11],
     gradeSubjects: {
       7: [1, 2, 3, 4, 5, 6, 7, 8, 9],
       8: [1, 2, 3, 4, 5, 6, 7, 8, 9],
       9: [1, 2, 3, 4, 5, 6, 7, 8, 9],
-      10: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+      10: [1, 2, 3, 4, 5, 6, 7, 8, 9, 11],
     },
   },
   {
