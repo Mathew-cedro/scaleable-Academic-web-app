@@ -23,8 +23,28 @@ engine = create_engine(
 
 
 def init_db() -> None:
-    """Create database tables based on SQLModel metadata."""
+    """Create database tables based on SQLModel metadata and apply safe column migrations."""
     SQLModel.metadata.create_all(engine)
+    if str(DATABASE_URL).startswith("sqlite"):
+        _migrate_sqlite_schema()
+
+
+def _migrate_sqlite_schema() -> None:
+    """Safely add newly introduced columns to existing SQLite tables if missing."""
+    try:
+        with engine.connect() as conn:
+            result = conn.exec_driver_sql("PRAGMA table_info(scheduleslot);")
+            existing_cols = {row[1] for row in result.fetchall()}
+            if existing_cols:
+                if "is_substituted" not in existing_cols:
+                    conn.exec_driver_sql("ALTER TABLE scheduleslot ADD COLUMN is_substituted BOOLEAN DEFAULT 0;")
+                if "original_teacher_id" not in existing_cols:
+                    conn.exec_driver_sql("ALTER TABLE scheduleslot ADD COLUMN original_teacher_id INTEGER DEFAULT NULL;")
+                if "substitution_reason" not in existing_cols:
+                    conn.exec_driver_sql("ALTER TABLE scheduleslot ADD COLUMN substitution_reason VARCHAR DEFAULT NULL;")
+                conn.commit()
+    except Exception as e:
+        print(f"[DB Migration Warning] Could not migrate SQLite schema: {e}")
 
 
 def get_session() -> Generator[Session, None, None]:

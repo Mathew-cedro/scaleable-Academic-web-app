@@ -99,6 +99,9 @@ class ScheduleSlot(SQLModel, table=True):
     day_of_week: int = Field(index=True)  # 0 = Monday ... 4 = Friday
     period_index: int = Field(index=True)  # 1 to 7 (1-hour instructional periods)
     is_locked: bool = Field(default=False)  # True for Monday Period 1 Homeroom & fixed locks
+    is_substituted: bool = Field(default=False)  # True if temporarily substituted
+    original_teacher_id: Optional[int] = Field(default=None, foreign_key="teacher.id")
+    substitution_reason: Optional[str] = Field(default=None)
 
 
 class SavedSchedule(SQLModel, table=True):
@@ -134,3 +137,22 @@ class ScheduleDeployment(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class BiometricAttendanceLog(SQLModel, table=True):
+    """
+    Biometric Daily Time Record (DTR) Scan Log.
+    Ingested from fingerprint/facial recognition biometric machines to track attendance
+    and trigger automated dynamic substitution for absent/tardy teachers.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    date: str = Field(index=True)  # YYYY-MM-DD
+    teacher_id: Optional[int] = Field(default=None, foreign_key="teacher.id", index=True)
+    teacher_name: str = Field(index=True)
+    department_code: Optional[str] = Field(default=None, index=True)
+    time_in: Optional[str] = Field(default=None)  # e.g., "07:15 AM"
+    time_out: Optional[str] = Field(default=None)
+    status: str = Field(default="PRESENT", index=True)  # "PRESENT", "LATE", "ABSENT", "ON_LEAVE"
+    is_covered: bool = Field(default=False)
+    substitute_teacher_id: Optional[int] = Field(default=None, foreign_key="teacher.id")
+    substitute_teacher_name: Optional[str] = Field(default=None)
+    notes: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

@@ -7,7 +7,10 @@ import {
   ChevronRight,
   ChevronLeft,
   Cpu,
-  UserCheck
+  UserCheck,
+  BookOpen,
+  FileSpreadsheet,
+  UserPlus
 } from "lucide-react";
 import type { UserProfile } from "../api/client";
 
@@ -19,7 +22,7 @@ interface Department {
 
 interface Props {
   currentUser: UserProfile;
-  activeView: string; // "CLASS_GRID" | "TEACHER_GRID" | "MASTER_GRID" | "FACULTY_LOAD" | "DEPT_DASHBOARD" | "DEPT_GRID" | "PROFILE" | "GENERATE_MASTER"
+  activeView: string; // "CLASS_GRID" | "TEACHER_GRID" | "MASTER_GRID" | "FACULTY_LOAD" | "DEPT_DASHBOARD" | "DEPT_GRID" | "PROFILE" | "GENERATE_MASTER" | "TEACHER_POCKET"
   onSelectView: (view: string) => void;
   departments?: Department[];
   selectedDeptId?: number | "ALL";
@@ -31,6 +34,8 @@ interface Props {
   actionLoading?: boolean;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  onOpenExcelBiometric?: () => void;
+  onOpenNewHire?: () => void;
 }
 
 export const Sidebar = ({
@@ -41,6 +46,8 @@ export const Sidebar = ({
   onLogout,
   collapsed = false,
   onToggleCollapse,
+  onOpenExcelBiometric,
+  onOpenNewHire,
 }: Props) => {
   const isPrincipal = currentUser.role === "PRINCIPAL";
 
@@ -310,17 +317,72 @@ export const Sidebar = ({
           </nav>
         </div>
 
-        {/* Category 3: Optimization & Tools */}
+        {/* Category 3: Optimization & Defense Modules */}
         <div>
           {!collapsed ? (
             <div className="text-xs font-semibold text-[#D5B4DE] px-3 mb-1.5">
-              Optimization & Tools
+              Operations & Modules
             </div>
           ) : (
             <div className="border-t border-[#570A57] my-1.5 mx-2" />
           )}
 
           <div className="space-y-1">
+            {/* Teacher Pocket Schedule (Zero Effort View) */}
+            <button
+              onClick={() => onSelectView("TEACHER_POCKET")}
+              className={`w-full flex items-center ${
+                collapsed ? "justify-center py-2.5 px-0" : "gap-3 px-3 py-2"
+              } rounded-xl text-xs font-medium transition cursor-pointer ${
+                activeView === "TEACHER_POCKET"
+                  ? "bg-[#A91079] text-white shadow-md border-l-4 border-[#F806CC]"
+                  : "text-[#E2C7E5] hover:text-white hover:bg-[#570A57]/60"
+              }`}
+              title="Teacher Pocket Portal (Zero Effort View)"
+            >
+              <BookOpen className="w-4 h-4 shrink-0 text-[#F806CC]" />
+              {!collapsed && (
+                <div className="flex items-center justify-between flex-1 min-w-0">
+                  <span className="truncate">Teacher Pocket View</span>
+                  <span className="text-[9px] bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded font-black border border-emerald-700/40">
+                    Easy
+                  </span>
+                </div>
+              )}
+            </button>
+
+            {/* Excel & Biometrics Import Modal Trigger */}
+            {onOpenExcelBiometric && (
+              <button
+                onClick={onOpenExcelBiometric}
+                className={`w-full flex items-center ${
+                  collapsed ? "justify-center py-2.5 px-0" : "gap-3 px-3 py-2"
+                } rounded-xl text-xs font-medium text-[#E2C7E5] hover:text-white hover:bg-[#570A57]/60 transition cursor-pointer`}
+                title="Excel Master Schedule & Biometric Sync"
+              >
+                <FileSpreadsheet className="w-4 h-4 shrink-0 text-emerald-400" />
+                {!collapsed && (
+                  <span className="truncate">Excel & Biometrics Sync</span>
+                )}
+              </button>
+            )}
+
+            {/* Onboard New Teacher Modal Trigger */}
+            {onOpenNewHire && (
+              <button
+                onClick={onOpenNewHire}
+                className={`w-full flex items-center ${
+                  collapsed ? "justify-center py-2.5 px-0" : "gap-3 px-3 py-2"
+                } rounded-xl text-xs font-medium text-[#E2C7E5] hover:text-white hover:bg-[#570A57]/60 transition cursor-pointer`}
+                title="Onboard New Hire / Transferee"
+              >
+                <UserPlus className="w-4 h-4 shrink-0 text-amber-300" />
+                {!collapsed && (
+                  <span className="truncate">Onboard New Teacher</span>
+                )}
+              </button>
+            )}
+
             {/* Schedule Generator Tab */}
             <button
               onClick={() => onSelectView("GENERATE_MASTER")}

@@ -312,3 +312,186 @@ class ScheduleDeployResponse(BaseModel):
 
 
 
+
+
+# --- Excel Schedule Import Schemas ---
+class ExcelScheduleRowPreview(BaseModel):
+    row_num: int
+    teacher_name: str
+    department_code: str
+    position: str = "Teacher I"
+    section_name: str
+    grade_level: int
+    program_type: str = "BEC"
+    room_number: str
+    subject_name: str
+    day_of_week: int
+    period_index: int
+    is_valid: bool = True
+    errors: List[str] = Field(default_factory=list)
+
+
+class ExcelSchedulePreviewResponse(BaseModel):
+    filename: str
+    total_rows: int
+    valid_rows_count: int
+    error_rows_count: int
+    unique_teachers_count: int
+    unique_sections_count: int
+    unique_departments_count: int
+    preview_items: List[ExcelScheduleRowPreview] = Field(default_factory=list)
+    errors: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class ExcelScheduleCommitResponse(BaseModel):
+    success: bool
+    message: str
+    slots_imported: int
+    teachers_count: int
+    sections_count: int
+    subjects_count: int
+
+
+# --- Biometric DTR Attendance Schemas ---
+class BiometricLogRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    date: str
+    teacher_id: Optional[int] = None
+    teacher_name: str
+    department_code: Optional[str] = None
+    time_in: Optional[str] = None
+    time_out: Optional[str] = None
+    status: str
+    is_covered: bool = False
+    substitute_teacher_id: Optional[int] = None
+    substitute_teacher_name: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+
+class SubstituteRecommendation(BaseModel):
+    slot_id: int
+    day_of_week: int
+    period_index: int
+    section_name: str
+    subject_name: str
+    room_number: str
+    original_teacher_id: int
+    original_teacher_name: str
+    suggested_substitute_id: int
+    suggested_substitute_name: str
+    substitute_department: str
+    substitute_current_weekly_hours: int
+    substitute_current_daily_hours: int
+    reason: str
+
+
+class BiometricProcessResponse(BaseModel):
+    success: bool
+    message: str
+    date: str
+    total_scanned: int
+    present_count: int
+    late_count: int
+    absent_count: int
+    uncovered_slots_count: int
+    absent_teachers: List[Dict[str, Any]] = Field(default_factory=list)
+    recommendations: List[SubstituteRecommendation] = Field(default_factory=list)
+    attendance_records: List[BiometricLogRead] = Field(default_factory=list)
+
+
+class BiometricApplySubstitutionsRequest(BaseModel):
+    date: str
+    recommendations: List[SubstituteRecommendation]
+
+
+# --- New Hire Conflict Intelligence Schemas ---
+class ProposedSlot(BaseModel):
+    section_id: int
+    subject_id: int
+    day_of_week: int
+    period_index: int
+    room_number: Optional[str] = None
+
+
+class NewHireAuditRequest(BaseModel):
+    name: str
+    department_id: int
+    position: str = "Teacher I"
+    max_daily_hours: int = 6
+    max_weekly_hours: int = 30
+    proposed_slots: List[ProposedSlot] = Field(default_factory=list)
+    target_grade_level: Optional[int] = None
+
+
+class SlotClashItem(BaseModel):
+    slot_type: str  # "ROOM_CLASH" | "SECTION_CLASH" | "TEACHER_OVERLOAD"
+    day_of_week: int
+    period_index: int
+    description: str
+    severity: str  # "CRITICAL" | "WARNING"
+
+
+class WorkloadReliefOpportunity(BaseModel):
+    overloaded_teacher_id: int
+    overloaded_teacher_name: str
+    current_weekly_load: int
+    slot_id: int
+    day_of_week: int
+    period_index: int
+    section_name: str
+    subject_name: str
+    room_number: str
+    reason: str
+
+
+class NewHireAuditResponse(BaseModel):
+    feasibility: str  # "FEASIBLE" | "WARNING" | "CONFLICT"
+    can_commit: bool
+    summary: str
+    clashes: List[SlotClashItem] = Field(default_factory=list)
+    relief_opportunities: List[WorkloadReliefOpportunity] = Field(default_factory=list)
+    proposed_daily_loads: Dict[int, int] = Field(default_factory=dict)
+    proposed_total_hours: int = 0
+    is_ra4670_compliant: bool = True
+
+
+# --- Teacher Pocket Portal Schemas ---
+class TeacherPocketSlot(BaseModel):
+    slot_id: int
+    day_of_week: int
+    period_index: int
+    time_range: str
+    section_name: str
+    grade_level: int
+    subject_name: str
+    room_number: str
+    is_locked: bool
+    is_substituted: bool
+    original_teacher_name: Optional[str] = None
+    substitution_reason: Optional[str] = None
+    is_current_period: bool = False
+
+
+class TeacherPocketViewResponse(BaseModel):
+    teacher_id: int
+    teacher_name: str
+    position: str
+    department_name: str
+    department_code: str
+    status: str
+    is_adviser: bool
+    advisory_section_name: Optional[str] = None
+    day_name: str
+    day_of_week: int
+    daily_load_hours: int
+    max_daily_hours: int = 6
+    weekly_load_hours: int
+    max_weekly_hours: int = 30
+    has_substitute_duty_today: bool
+    substitute_notices: List[Dict[str, Any]] = Field(default_factory=list)
+    today_schedule: List[TeacherPocketSlot] = Field(default_factory=list)
+    all_week_schedule: Dict[int, List[TeacherPocketSlot]] = Field(default_factory=dict)

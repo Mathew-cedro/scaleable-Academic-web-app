@@ -656,4 +656,102 @@ export const api = {
     if (!res.ok) throw new Error("Failed to fetch deployments");
     return res.json();
   },
+
+  // Excel Master Schedule Import
+  async downloadScheduleTemplate(): Promise<Blob> {
+    const res = await fetch(`${API_BASE}/import/template/schedule`);
+    if (!res.ok) throw new Error("Failed to download schedule template");
+    return res.blob();
+  },
+
+  async previewScheduleExcel(file: File): Promise<any> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${API_BASE}/import/schedule/preview`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Preview failed" }));
+      throw new Error(err.detail || "Failed to preview schedule");
+    }
+    return res.json();
+  },
+
+  async commitScheduleExcel(file: File): Promise<any> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${API_BASE}/import/schedule/commit`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Import failed" }));
+      throw new Error(err.detail || "Failed to commit schedule");
+    }
+    return res.json();
+  },
+
+  // Biometric DTR Attendance Sync
+  async downloadDtrTemplate(): Promise<Blob> {
+    const res = await fetch(`${API_BASE}/biometrics/template/dtr`);
+    if (!res.ok) throw new Error("Failed to download DTR template");
+    return res.blob();
+  },
+
+  async processBiometrics(file: File, cutoffTime: string = "07:45", dayOfWeek?: number): Promise<any> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const params = new URLSearchParams({ cutoff_time: cutoffTime });
+    if (dayOfWeek !== undefined) params.append("day_of_week", dayOfWeek.toString());
+    const res = await fetch(`${API_BASE}/biometrics/process?${params.toString()}`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Biometric processing failed" }));
+      throw new Error(err.detail || "Failed to process biometric scan");
+    }
+    return res.json();
+  },
+
+  async applyBiometricSubstitutions(payload: { date: string; recommendations: any[] }): Promise<any> {
+    const res = await fetch(`${API_BASE}/biometrics/apply-substitutions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Failed to apply substitutions" }));
+      throw new Error(err.detail || "Failed to apply substitutions");
+    }
+    return res.json();
+  },
+
+  // New Hire Conflict Audit
+  async auditNewHire(payload: any): Promise<any> {
+    const res = await fetch(`${API_BASE}/teachers/audit-new-hire`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Audit failed" }));
+      throw new Error(err.detail || "Failed to audit new hire");
+    }
+    return res.json();
+  },
+
+  // Teacher Pocket Portal
+  async getTeacherPocketSchedule(teacherId: number, dayOverride?: number): Promise<any> {
+    const url = dayOverride !== undefined
+      ? `${API_BASE}/teacher-pocket/${teacherId}?day_override=${dayOverride}`
+      : `${API_BASE}/teacher-pocket/${teacherId}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Failed to fetch pocket schedule" }));
+      throw new Error(err.detail || "Failed to fetch teacher pocket schedule");
+    }
+    return res.json();
+  },
 };

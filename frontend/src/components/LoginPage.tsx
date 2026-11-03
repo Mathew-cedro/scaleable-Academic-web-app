@@ -9,15 +9,17 @@ import {
   Eye,
   EyeOff,
   Clock,
+  BookOpen
 } from "lucide-react";
 import { api } from "../api/client";
 import type { UserProfile } from "../api/client";
 
 interface Props {
   onLoginSuccess: (user: UserProfile) => void;
+  onOpenTeacherPocket?: () => void;
 }
 
-export const LoginPage = ({ onLoginSuccess }: Props) => {
+export const LoginPage = ({ onLoginSuccess, onOpenTeacherPocket }: Props) => {
   const [username, setUsername] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -58,35 +60,29 @@ export const LoginPage = ({ onLoginSuccess }: Props) => {
     };
   }, [lockoutSeconds]);
 
-  const handleLogin = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (lockoutSeconds > 0 || loading) return;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (lockoutSeconds > 0) return;
 
-    if (!username.trim()) {
-      setErrorMsg("Please enter your account username.");
-      return;
-    }
-    if (!password.trim()) {
-      setErrorMsg("Please enter your account password.");
-      return;
-    }
+    setErrorMsg(null);
+    setLoading(true);
 
     try {
-      setLoading(true);
-      setErrorMsg(null);
-      const res = await api.login(username.trim(), password.trim(), rememberMe);
-      // Persist authenticated profile and JWT token
-      localStorage.setItem("schedmaster_token", res.token);
-      localStorage.setItem("schedmaster_user", JSON.stringify(res.user));
-      onLoginSuccess(res.user);
-    } catch (err: any) {
-      const message: string = err.message || "Authentication failed. Please verify your credentials.";
-      setErrorMsg(message);
+      const res = await api.login(username.trim(), password, rememberMe);
 
-      // Check for lockout response
-      const lockoutMatch = message.match(/locked (?:for|in) (\d+) seconds/i);
-      if (lockoutMatch && lockoutMatch[1]) {
-        setLockoutSeconds(parseInt(lockoutMatch[1], 10));
+      if (res.token) {
+        localStorage.setItem("schedmaster_token", res.token);
+      }
+      if (res.user) {
+        localStorage.setItem("schedmaster_user", JSON.stringify(res.user));
+        onLoginSuccess(res.user);
+      }
+    } catch (err: any) {
+      const msg = err.message || "Authentication failed";
+      setErrorMsg(msg);
+
+      if (msg.toLowerCase().includes("lockout") || msg.toLowerCase().includes("too many failed")) {
+        setLockoutSeconds(60);
       }
     } finally {
       setLoading(false);
@@ -94,109 +90,109 @@ export const LoginPage = ({ onLoginSuccess }: Props) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#1A012B] text-slate-100 flex flex-col justify-center items-center p-4 sm:p-6 lg:p-8 relative overflow-hidden select-none">
-      {/* Background Subtle Ambiance */}
-      <div className="absolute top-0 -left-48 w-[500px] h-[500px] bg-[#570A57]/30 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 -right-48 w-[500px] h-[500px] bg-[#A91079]/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-[#F806CC]/5 rounded-full blur-3xl pointer-events-none" />
+    <div className="min-h-screen bg-[#1A012B] text-[#FAF5FA] flex flex-col justify-center items-center p-4 selection:bg-[#F806CC] selection:text-white relative overflow-hidden font-sans">
+      {/* Background Ambience */}
+      <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] rounded-full bg-[#570A57]/20 blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] rounded-full bg-[#A91079]/15 blur-[120px] pointer-events-none" />
 
-      {/* Main Form Centerpiece */}
-      <main className="w-full max-w-md z-10 py-6">
-        <div className="bg-[#2E0249]/90 backdrop-blur-xl rounded-3xl border border-[#570A57] p-7 sm:p-8 shadow-2xl space-y-6">
-          {/* Card Header */}
-          <div className="text-center space-y-2 pb-1">
-            <div className="inline-flex w-14 h-14 rounded-2xl bg-[#570A57] border border-[#F806CC]/30 items-center justify-center text-[#F806CC] shadow-lg shadow-purple-950/50 mb-1">
-              <GraduationCap className="w-8 h-8" />
+      <main className="w-full max-w-md z-10 space-y-6">
+        {/* Brand Header */}
+        <div className="text-center space-y-2">
+          <div className="w-14 h-14 rounded-2xl bg-[#570A57] border border-[#F806CC]/30 flex items-center justify-center text-[#F806CC] shadow-xl mx-auto shadow-[#570A57]/40">
+            <GraduationCap className="w-8 h-8" />
+          </div>
+          <h1 className="text-2xl font-black tracking-tight text-white">
+            DepEd SchedMaster
+          </h1>
+          <p className="text-xs text-[#D5B4DE] max-w-xs mx-auto">
+            Junior High School Key Stage 3 Timetable Management • DepEd Order No. 009, s. 2026
+          </p>
+        </div>
+
+        {/* Login Card */}
+        <div className="bg-[#2E0249] border border-[#570A57] rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative">
+          <div className="flex items-center justify-between border-b border-[#570A57] pb-3">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs font-bold text-white uppercase tracking-wider">
+                Institutional Access
+              </span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-              DepEd SchedMaster
-            </h1>
-            <p className="text-xs text-[#D5B4DE] max-w-xs mx-auto">
-              Junior High School Automated Timetable & Magna Carta Compliance System
-            </p>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#570A57]/80 border border-[#A91079]/40 text-[10px] text-[#FAF5FA] font-semibold">
-              <ShieldCheck className="w-3 h-3 text-[#F806CC]" />
-              <span>Official Institutional Sign-In</span>
-            </div>
+            <span className="text-[10px] font-semibold text-[#D5B4DE] bg-[#3D055E] px-2 py-0.5 rounded-full border border-[#570A57]">
+              PBKDF2-HMAC-SHA256
+            </span>
           </div>
 
-          {/* Error Notification Alert */}
           {errorMsg && (
             <div
-              className={`p-3.5 rounded-2xl text-xs flex items-start gap-2.5 transition ${
+              className={`p-3.5 rounded-xl border flex items-start gap-2.5 text-xs ${
                 lockoutSeconds > 0
-                  ? "bg-amber-950/80 border border-amber-600/70 text-amber-200"
-                  : "bg-red-950/80 border border-red-700/70 text-red-200"
+                  ? "bg-rose-950/60 border-rose-500 text-rose-200"
+                  : "bg-rose-950/40 border-rose-600/50 text-rose-200"
               }`}
             >
-              {lockoutSeconds > 0 ? (
-                <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 animate-spin" />
-              ) : (
-                <ShieldAlert className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-              )}
-              <div className="flex-1">
-                <span className="font-semibold block">{errorMsg}</span>
-                {lockoutSeconds > 0 && (
-                  <span className="text-[11px] font-mono text-amber-300 mt-1 block">
-                    Security cooldown: {lockoutSeconds} seconds remaining
-                  </span>
-                )}
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-bold">Authentication Refused</div>
+                <div className="text-[11px] mt-0.5">{errorMsg}</div>
               </div>
             </div>
           )}
 
-          {/* Secure Form */}
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {/* Username Input */}
-            <div>
-              <label className="block text-xs font-semibold text-[#D5B4DE] mb-1.5">
-                Username / DepEd Account
+            <div className="space-y-1.5">
+              <label
+                htmlFor="username"
+                className="text-xs font-bold text-[#D5B4DE] uppercase tracking-wider block"
+              >
+                Account Username / Code
               </label>
               <div className="relative">
-                <User className="w-4 h-4 text-[#A58BAA] absolute left-3.5 top-3 pointer-events-none" />
                 <input
+                  id="username"
                   type="text"
-                  value={username}
-                  onChange={(e) => {
-                    setUsername(e.target.value);
-                    setErrorMsg(null);
-                  }}
-                  disabled={loading || lockoutSeconds > 0}
-                  placeholder="Enter username (e.g. principal, science, math)"
-                  autoComplete="username"
-                  autoFocus
                   required
-                  className="w-full pl-10 pr-4 py-2.5 bg-[#220137]/90 border border-[#570A57] hover:border-[#A91079] focus:border-[#F806CC] focus:ring-1 focus:ring-[#F806CC] rounded-xl text-xs font-semibold text-white placeholder-[#9E6B9E] focus:outline-hidden transition disabled:opacity-50"
+                  autoFocus
+                  autoComplete="username"
+                  disabled={loading || lockoutSeconds > 0}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="e.g., principal, sci_head, math_head"
+                  className="w-full bg-[#3D055E] border border-[#A91079]/50 rounded-xl px-4 py-2.5 text-sm text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-[#F806CC] transition pl-10"
                 />
+                <User className="w-4 h-4 text-[#D5B4DE] absolute left-3.5 top-3" />
               </div>
             </div>
 
             {/* Password Input */}
-            <div>
-              <label className="block text-xs font-semibold text-[#D5B4DE] mb-1.5">
-                Password
-              </label>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label
+                  htmlFor="password"
+                  className="text-xs font-bold text-[#D5B4DE] uppercase tracking-wider block"
+                >
+                  Password
+                </label>
+              </div>
               <div className="relative">
-                <Lock className="w-4 h-4 text-[#A58BAA] absolute left-3.5 top-3 pointer-events-none" />
                 <input
+                  id="password"
                   type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setErrorMsg(null);
-                  }}
-                  onKeyDown={handleKeyDown}
-                  onKeyUp={handleKeyDown}
-                  disabled={loading || lockoutSeconds > 0}
-                  placeholder="Enter account password"
-                  autoComplete="current-password"
                   required
-                  className="w-full pl-10 pr-10 py-2.5 bg-[#220137]/90 border border-[#570A57] hover:border-[#A91079] focus:border-[#F806CC] focus:ring-1 focus:ring-[#F806CC] rounded-xl text-xs font-semibold text-white placeholder-[#9E6B9E] focus:outline-hidden transition disabled:opacity-50"
+                  autoComplete="current-password"
+                  disabled={loading || lockoutSeconds > 0}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="••••••••••••"
+                  className="w-full bg-[#3D055E] border border-[#A91079]/50 rounded-xl px-4 py-2.5 text-sm text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-[#F806CC] transition pl-10 pr-10"
                 />
+                <Lock className="w-4 h-4 text-[#D5B4DE] absolute left-3.5 top-3" />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="p-1 text-[#A58BAA] hover:text-[#FAF5FA] absolute right-3 top-2.5 cursor-pointer transition"
+                  className="absolute right-3.5 top-3 text-[#D5B4DE] hover:text-white transition cursor-pointer"
                   title={showPassword ? "Hide Password" : "Show Password"}
                   tabIndex={-1}
                 >
@@ -248,10 +244,24 @@ export const LoginPage = ({ onLoginSuccess }: Props) => {
               ) : (
                 <>
                   <Lock className="w-4 h-4 text-[#F806CC]" />
-                  <span>Sign In to SchedMaster</span>
+                  <span>Sign In as School Admin / Dept Head</span>
                 </>
               )}
             </button>
+
+            {/* Zero-Friction Teacher Access Button */}
+            {onOpenTeacherPocket && (
+              <div className="pt-3 border-t border-[#570A57]/60">
+                <button
+                  type="button"
+                  onClick={onOpenTeacherPocket}
+                  className="w-full py-2.5 px-3 rounded-xl bg-[#3D055E] hover:bg-[#570A57] border border-emerald-500/40 text-emerald-300 hover:text-emerald-200 text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                >
+                  <BookOpen className="w-4 h-4 text-emerald-400" />
+                  <span>Are you a Teacher? View Pocket Schedule ➔</span>
+                </button>
+              </div>
+            )}
           </form>
         </div>
       </main>

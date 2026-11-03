@@ -44,6 +44,10 @@ import { SavedSchedulesModal } from "./components/SavedSchedulesModal";
 import { SlotContextMenu } from "./components/SlotContextMenu";
 import { UnassignConfirmModal } from "./components/UnassignConfirmModal";
 import { getAllRoomConflicts, type ScheduleSlot } from "./utils/scheduleConflictChecker";
+import { TeacherPocketPortal } from "./components/TeacherPocketPortal";
+import { ExcelBiometricModal } from "./components/ExcelBiometricModal";
+import { NewHireModal } from "./components/NewHireModal";
+import { FileSpreadsheet, UserPlus } from "lucide-react";
 
 export default function App() {
   // Authentication State
@@ -142,6 +146,11 @@ export default function App() {
   const [savedSchedulesCount, setSavedSchedulesCount] = useState<number>(0);
   const [activeSavedSchedule, setActiveSavedSchedule] = useState<SavedScheduleItem | null>(null);
   const [currentConfigJson, setCurrentConfigJson] = useState<string | undefined>(undefined);
+
+  // Defense Modules State (Zero-Training Teacher Pocket, Excel Import, Biometric DTR, New Hire)
+  const [teacherPocketMode, setTeacherPocketMode] = useState<boolean>(false);
+  const [excelBiometricModalOpen, setExcelBiometricModalOpen] = useState<boolean>(false);
+  const [newHireModalOpen, setNewHireModalOpen] = useState<boolean>(false);
 
   // Toast State
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
@@ -244,6 +253,11 @@ export default function App() {
     }
     return 60;
   }, [subjects]);
+
+  // Load baseline data on app mount (available even before sign-in for zero-friction pocket view)
+  useEffect(() => {
+    fetchData(false);
+  }, []);
 
   useEffect(() => {
     if (currentUser) {
@@ -703,9 +717,23 @@ export default function App() {
     }
   };
 
-  // If user is not logged in, render the Login Page!
+  // If user is not logged in, render the Login Page or Teacher Pocket Portal
   if (!currentUser) {
-    return <LoginPage onLoginSuccess={(user) => setCurrentUser(user)} />;
+    if (teacherPocketMode) {
+      return (
+        <TeacherPocketPortal
+          teachers={teachers}
+          initialTeacherId={inspectedTeacherId || (teachers.length > 0 ? teachers[0].id : 1)}
+          onExit={() => setTeacherPocketMode(false)}
+        />
+      );
+    }
+    return (
+      <LoginPage
+        onLoginSuccess={(user) => setCurrentUser(user)}
+        onOpenTeacherPocket={() => setTeacherPocketMode(true)}
+      />
+    );
   }
 
   // Active department object for department views
@@ -748,6 +776,8 @@ export default function App() {
         actionLoading={actionLoading}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        onOpenExcelBiometric={() => setExcelBiometricModalOpen(true)}
+        onOpenNewHire={() => setNewHireModalOpen(true)}
       />
 
       {/* Main Workspace Column */}
@@ -796,6 +826,26 @@ export default function App() {
 
           {/* Clean Top Action Bar: Save Files, Sign Out */}
           <div className="flex items-center gap-2">
+            {/* Excel & Biometrics Ingestion Quick Button */}
+            <button
+              onClick={() => setExcelBiometricModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold shadow-2xs transition cursor-pointer"
+              title="Import master schedule spreadsheet or daily biometric punch logs"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="hidden lg:inline">Excel & Biometrics</span>
+            </button>
+
+            {/* Onboard New Teacher Quick Button */}
+            <button
+              onClick={() => setNewHireModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-semibold shadow-2xs transition cursor-pointer"
+              title="Add new hire or transferee with real-time conflict checking"
+            >
+              <UserPlus className="w-3.5 h-3.5 text-amber-600" />
+              <span className="hidden lg:inline">Onboard Teacher</span>
+            </button>
+
             {/* Save Current Schedule Snapshot */}
             <button
               onClick={() => setSaveModalOpen(true)}
@@ -1123,6 +1173,15 @@ export default function App() {
                 />
               )}
 
+              {/* Teacher Pocket View (Minimal Effort Feed) */}
+              {activeView === "TEACHER_POCKET" && (
+                <TeacherPocketPortal
+                  teachers={teachers}
+                  initialTeacherId={inspectedTeacherId || (teachers.length > 0 ? teachers[0].id : 1)}
+                  onExit={() => setActiveView("CLASS_GRID")}
+                />
+              )}
+
               {/* Section Management Hub (CRUD across all departments) */}
               {activeView === "SECTIONS" && (
                 <SectionManagerView
@@ -1300,6 +1359,29 @@ export default function App() {
           loading={actionLoading}
         />
       )}
+
+      {/* Defense Module: Excel Master Schedule & Biometric DTR Ingestion Modal */}
+      <ExcelBiometricModal
+        isOpen={excelBiometricModalOpen}
+        onClose={() => setExcelBiometricModalOpen(false)}
+        onSuccess={(msg) => {
+          showToast(msg, "success");
+          fetchData(false);
+        }}
+      />
+
+      {/* Defense Module: New Hire Onboarding & Conflict Intelligence Modal */}
+      <NewHireModal
+        isOpen={newHireModalOpen}
+        onClose={() => setNewHireModalOpen(false)}
+        departments={departments}
+        sections={sections}
+        subjects={subjects}
+        onSuccess={(msg) => {
+          showToast(msg, "success");
+          fetchData(false);
+        }}
+      />
     </div>
   );
 }
