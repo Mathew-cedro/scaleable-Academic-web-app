@@ -54,6 +54,9 @@ export type { ModularTrack };
 export { normalizeModularTrack, DEFAULT_MODULAR_TRACKS, BADGE_COLOR_MAP };
 import { BatchSectionSetupModal } from "./BatchSectionSetupModal";
 import { formatDuration, formatDurationDetailed } from "../utils/bellSchedule";
+import { PreFlightReadinessCard } from "./PreFlightReadinessCard";
+import { GenerationCockpitModal } from "./GenerationCockpitModal";
+import { ScheduleHealthScorecard } from "./ScheduleHealthScorecard";
 
 interface ScheduleSlot {
   id: number;
@@ -2565,6 +2568,31 @@ export const GenerateMasterTab = ({
           {/* TAB 4: Run & Deploy */}
           {activeStudioTab === "RUN_DEPLOY" && (
             <div className="space-y-6 animate-in fade-in duration-150">
+              {/* Intelligent Pre-Flight Schedule Feasibility & Readiness Audit Card */}
+              <PreFlightReadinessCard
+                teachers={teachers}
+                sections={sections}
+                departments={departments}
+                subjects={allSubjects}
+                selectedSectionIds={selectedGenerationSectionIds}
+                periodDuration={periodDuration}
+                maxDailyHours={maxDailyHours}
+                onLaunchGenerate={handleLaunchGenerate}
+                loading={loading}
+                isPrincipal={isPrincipal}
+                onNavigateToTab={(tab) => setActiveStudioTab(tab)}
+              />
+
+              {/* Schedule Quality & DepEd Compliance Scorecard for Existing Slots */}
+              {slots.length > 0 && (
+                <ScheduleHealthScorecard
+                  slots={slots}
+                  sections={sections}
+                  teachers={teachers}
+                  latencyMs={lastResult?.latency_ms}
+                />
+              )}
+
               {/* Pre-Flight Generation Verification Card */}
               <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
@@ -3849,6 +3877,13 @@ export const GenerateMasterTab = ({
           </div>
         </div>
       )}
+
+      {/* MODAL 11: AI Timetable Generation Progress Cockpit */}
+      <GenerationCockpitModal
+        isGenerating={loading}
+        sectionCount={selectedGenerationSectionIds.size}
+        periodDuration={periodDuration}
+      />
     </div>
   );
 };
