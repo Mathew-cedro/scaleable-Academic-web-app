@@ -5,7 +5,8 @@ Enforces RA 4670 Magna Carta limits (<= 6 hours/day actual teaching).
 """
 
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 
 from app.database import get_session
@@ -22,6 +23,11 @@ from app.schemas import (
     TeacherCreate,
     TeacherRead,
     TeacherUpdate,
+)
+from app.services.excel_importer import (
+    generate_sections_excel_template,
+    import_sections_from_items,
+    parse_and_preview_spreadsheet,
 )
 from app.websocket_manager import broadcast_sync
 
@@ -427,6 +433,73 @@ def create_sections_batch(data: BatchSectionCreateRequest, session: Session = De
     })
 
     return created_sections
+
+
+@router.get("/sections/template-excel")
+def download_sections_excel_template():
+    """
+    Download a formatted DepEd Junior High School Section Roster Excel (.xlsx) template
+    with guidelines, proper headers, and sample records across Grades 7 to 10.
+    """
+    buffer = generate_sections_excel_template()
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": 'attachment; filename="DepEd_Section_Roster_Template.xlsx"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
+@router.post("/sections/preview-excel")
+async def preview_sections_excel(
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+):
+    """
+    Parse an uploaded .xlsx, .xls, or .csv spreadsheet and return structured preview items
+    with smart column detection, grade level validation, and fuzzy faculty adviser matching.
+    """
+    contents = await file.read()
+    filename = file.filename or "sections.xlsx"
+    result = parse_and_preview_spreadsheet(contents, filename, session)
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("error", "Failed to parse spreadsheet."),
+        )
+    return result
+
+
+@router.post("/sections/import-excel")
+def import_sections_excel(
+    data: Dict[str, Any],
+    session: Session = Depends(get_session),
+):
+    """
+    Batch persist verified section items from Excel preview.
+    Creates new sections or updates existing sections, links advisers, and synchronizes Monday P1 Homeroom slots.
+    """
+    items = data.get("sections", [])
+    update_existing = bool(data.get("update_existing", True))
+
+    if not items:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No section records provided to import.",
+        )
+
+    res = import_sections_from_items(items, update_existing, session)
+
+    broadcast_sync({
+        "event": "SECTIONS_UPDATED",
+        "action": "SECTIONS_EXCEL_IMPORTED",
+        "created": res["created_count"],
+        "updated": res["updated_count"],
+    })
+
+    return res
 
 
 @router.put("/sections/{section_id}", response_model=SectionRead)

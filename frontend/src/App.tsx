@@ -1135,6 +1135,7 @@ export default function App() {
                   onEditSection={handleOpenEditSection}
                   onDeleteSection={handleOpenDeleteSection}
                   onViewClassTimetable={handleViewSectionClassTimetable}
+                  onRefreshData={fetchData}
                 />
               )}
             </div>

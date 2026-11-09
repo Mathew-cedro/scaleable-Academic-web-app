@@ -715,4 +715,86 @@ export const api = {
     link.remove();
     window.URL.revokeObjectURL(downloadUrl);
   },
+
+  async downloadSectionsTemplateExcel(): Promise<void> {
+    const url = `${API_BASE}/sections/template-excel`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, "Failed to download section template"));
+    }
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.setAttribute("download", "DepEd_Section_Roster_Template.xlsx");
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(downloadUrl);
+  },
+
+  async previewSectionsExcel(file: File): Promise<{
+    success: boolean;
+    filename: string;
+    detected_columns: Record<string, string | null>;
+    rows: Array<{
+      row_index: number;
+      section_id?: number | null;
+      name: string;
+      grade_level: number;
+      program_type: string;
+      room_number: string;
+      raw_adviser?: string | null;
+      adviser_id?: number | null;
+      adviser_name?: string | null;
+      adviser_matched: boolean;
+      status: "NEW" | "UPDATING" | "DUPLICATE_IN_FILE";
+      status_message: string;
+    }>;
+    stats: {
+      total: number;
+      valid: number;
+      new: number;
+      updating: number;
+      advisers_matched: number;
+    };
+  }> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${API_BASE}/sections/preview-excel`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, "Failed to parse section spreadsheet"));
+    }
+    return res.json();
+  },
+
+  async importSectionsExcel(
+    sections: Array<{
+      name: string;
+      grade_level: number;
+      program_type: string;
+      room_number: string;
+      adviser_id?: number | null;
+    }>,
+    updateExisting: boolean = true
+  ): Promise<{
+    success: boolean;
+    created_count: number;
+    updated_count: number;
+    skipped_count: number;
+    total_processed: number;
+  }> {
+    const res = await fetch(`${API_BASE}/sections/import-excel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sections, update_existing: updateExisting }),
+    });
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, "Failed to import sections"));
+    }
+    return res.json();
+  },
 };
