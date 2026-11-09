@@ -287,6 +287,18 @@ def generate_master_schedule(
             p1_model.Add(adv_overload >= sum(t_loads) - 24)
             p1_penalties.append(500 * adv_overload)
 
+        # Specialized track cap per teacher: at most 8 loads (2 sections) in Periods 8-9
+        t_special_loads = [
+            Y[t.id, c.id, s.id] * ((s.required_weekly_loads or 4) if s else 4)
+            for c in sections
+            for s in section_subjects[c.id]
+            if (t.id, c.id, s.id) in Y and is_special_track(c.program_type) and (
+                s.id > 8 and is_track_matching_subject(c.program_type, s.name)
+            )
+        ]
+        if t_special_loads:
+            p1_model.Add(sum(t_special_loads) <= 8)
+
     # Department-level Workload Balancing & Advisory Affinity
     for d_id, d_t_list in dept_teachers.items():
         if not d_t_list:
@@ -374,9 +386,9 @@ def generate_master_schedule(
         for (t_id, c_id, s_id) in assigned_pairs:
             sec = section_map[c_id]
             is_specialized = is_special_track(sec.program_type) and (
-                s_id > 8 or is_track_matching_subject(sec.program_type, subject_map[s_id].name if s_id in subject_map else "")
+                s_id > 8 and is_track_matching_subject(sec.program_type, subject_map[s_id].name if s_id in subject_map else "")
             )
-            sec_periods = all_periods if is_specialized else [1, 2, 3, 4, 5, 6, 7]
+            sec_periods = [8, 9] if is_specialized else [1, 2, 3, 4, 5, 6, 7]
             for d in days:
                 for p in sec_periods:
                     p2_X[t_id, c_id, s_id, d, p] = p2_m.NewBoolVar(f"x_{t_id}_{c_id}_{s_id}_{d}_{p}")
@@ -390,7 +402,10 @@ def generate_master_schedule(
         for (t_id, c_id, s_id) in assigned_pairs:
             sub = subject_map.get(s_id)
             sec = section_map[c_id]
-            sec_periods = all_periods if is_special_track(sec.program_type) else [1, 2, 3, 4, 5, 6, 7]
+            is_specialized = is_special_track(sec.program_type) and (
+                s_id > 8 and is_track_matching_subject(sec.program_type, sub.name if sub else "")
+            )
+            sec_periods = [8, 9] if is_specialized else [1, 2, 3, 4, 5, 6, 7]
             req_loads = (sub.required_weekly_loads if sub else 4) or 4
             p2_m.Add(sum(p2_X[t_id, c_id, s_id, d, p] for d in days for p in sec_periods if (t_id, c_id, s_id, d, p) in p2_X) == req_loads)
 
@@ -535,7 +550,7 @@ def generate_master_schedule(
                 is_afternoon_pref = any(k in name_lower for k in ["mapeh", "tle", "technology", "livelihood", "pe", "arts", "music", "research"])
 
             is_specialized = is_special_track(sec.program_type) and (
-                s_id > 8 or is_track_matching_subject(sec.program_type, sub.name)
+                s_id > 8 and is_track_matching_subject(sec.program_type, sub.name)
             )
 
             for d in days:
@@ -655,19 +670,23 @@ def generate_master_schedule(
     for (t_id, c_id, s_id) in assigned_pairs:
         sec = section_map[c_id]
         is_specialized = is_special_track(sec.program_type) and (
-            s_id > 8 or is_track_matching_subject(sec.program_type, subject_map[s_id].name if s_id in subject_map else "")
+            s_id > 8 and is_track_matching_subject(sec.program_type, subject_map[s_id].name if s_id in subject_map else "")
         )
-        sec_periods = all_periods if is_specialized else [1, 2, 3, 4, 5, 6, 7]
+        sec_periods = [8, 9] if is_specialized else [1, 2, 3, 4, 5, 6, 7]
         for d in days:
             for p in sec_periods:
                 if (t_id, c_id, s_id, d, p) in X and p2_solver.Value(X[t_id, c_id, s_id, d, p]) == 1:
+                    is_pinned = any(
+                        lk.section_id == c_id and lk.subject_id == s_id and lk.day_of_week == d and lk.period_index == p
+                        for lk in (existing_locked_slots if config.preserve_locked_slots else [])
+                    )
                     slot = ScheduleSlot(
                         section_id=c_id,
                         subject_id=s_id,
                         teacher_id=t_id,
                         day_of_week=d,
                         period_index=p,
-                        is_locked=False,
+                        is_locked=is_pinned,
                     )
                     session.add(slot)
                     new_slots.append(slot)
@@ -767,10 +786,6 @@ def repair_schedule(
     days = [0, 1, 2, 3, 4]
     all_periods = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
-    # Filter academic slots vs locked homeroom slots
-    locked_slots = [s for s in original_slots if s.is_locked]
-    slots_to_repair = [s for s in original_slots if not s.is_locked]
-
     # Check for homeroom guidance subject
     homeroom_sub = next(
         (s for s in subjects if "homeroom" in s.name.lower() or "guidance" in s.name.lower()),
@@ -778,6 +793,12 @@ def repair_schedule(
     )
     homeroom_id = homeroom_sub.id if homeroom_sub else None
     academic_subjects = [s for s in subjects if s.id != homeroom_id]
+
+    # Partition slots: Homeroom vs locked academic vs flexible academic
+    homeroom_slots = [s for s in original_slots if s.subject_id == homeroom_id]
+    academic_slots = [s for s in original_slots if s.subject_id != homeroom_id]
+    locked_academic_slots = [s for s in academic_slots if s.is_locked]
+    flexible_academic_slots = [s for s in academic_slots if not s.is_locked]
 
     # Resolve required subjects for each section
     def get_repair_section_subjects(sec: Section) -> List[Subject]:
@@ -822,7 +843,7 @@ def repair_schedule(
                     return matched
 
         # Fallback when no config track_subjects: preserve existing subjects plus any grade-matched subjects
-        existing_sub_ids = {s.subject_id for s in original_slots if s.section_id == sec.id and not s.is_locked}
+        existing_sub_ids = {s.subject_id for s in original_slots if s.section_id == sec.id and s.subject_id != homeroom_id}
         if existing_sub_ids:
             return [s for s in academic_subjects if s.id in existing_sub_ids]
         if p_type in ("BEC", "REGULAR"):
@@ -839,7 +860,7 @@ def repair_schedule(
 
     # Map sections and subjects present in original schedule
     orig_pair_counts: Dict[Tuple[int, int], int] = {}
-    for s in slots_to_repair:
+    for s in academic_slots:
         orig_pair_counts[(s.section_id, s.subject_id)] = orig_pair_counts.get((s.section_id, s.subject_id), 0) + 1
 
     # Map required counts from section subjects and allotments
@@ -897,9 +918,9 @@ def repair_schedule(
             continue
         c = section_map.get(c_id)
         is_specialized = c and is_special_track(c.program_type) and (
-            s_id > 8 or is_track_matching_subject(c.program_type, sub.name if sub else "")
+            s_id > 8 and is_track_matching_subject(c.program_type, sub.name if sub else "")
         )
-        sec_periods = all_periods if is_specialized else [1, 2, 3, 4, 5, 6, 7]
+        sec_periods = [8, 9] if is_specialized else [1, 2, 3, 4, 5, 6, 7]
         eligible = dept_teachers.get(sub.department_id, [])
         for t in eligible:
             for d in days:
@@ -914,8 +935,8 @@ def repair_schedule(
     prioritization_penalties = []
     placement_penalties = []
 
-    # Map original active assignments
-    for orig in slots_to_repair:
+    # Map original flexible assignments
+    for orig in flexible_academic_slots:
         key = (orig.teacher_id, orig.section_id, orig.subject_id, orig.day_of_week, orig.period_index)
         if orig.teacher_id in absent_teacher_ids:
             # Teacher is absent: cannot teach this slot
@@ -959,7 +980,7 @@ def repair_schedule(
             continue
         sec = section_map.get(c_id)
         is_specialized = sec and is_special_track(sec.program_type) and (
-            s_id > 8 or is_track_matching_subject(sec.program_type, sub.name)
+            s_id > 8 and is_track_matching_subject(sec.program_type, sub.name)
         )
         if is_specialized:
             if p in (8, 9):
@@ -1007,13 +1028,31 @@ def repair_schedule(
         + sum(placement_penalties)
     )
 
-    # Constraint: Preserve locked slots (e.g. Monday Homeroom)
-    for lk in locked_slots:
+    # Constraint: Homeroom slots (Monday Period 1) reserve that section & teacher period
+    for hm in homeroom_slots:
         for (t_id, c_id, s_id, d, p), var in X.items():
-            if c_id == lk.section_id and d == lk.day_of_week and p == lk.period_index:
+            if c_id == hm.section_id and d == hm.day_of_week and p == hm.period_index:
                 model.Add(var == 0)
-            if t_id == lk.teacher_id and d == lk.day_of_week and p == lk.period_index:
+            if t_id == hm.teacher_id and d == hm.day_of_week and p == hm.period_index:
                 model.Add(var == 0)
+
+    # Constraint: Preserved manually pinned academic slots MUST remain at their exact day and period
+    locked_slot_coords = set()
+    for lk in locked_academic_slots:
+        locked_slot_coords.add((lk.section_id, lk.subject_id, lk.day_of_week, lk.period_index))
+        sub = subject_map.get(lk.subject_id)
+        eligible = dept_teachers.get(sub.department_id, []) if sub else []
+        if lk.teacher_id not in absent_teacher_ids and (lk.teacher_id, lk.section_id, lk.subject_id, lk.day_of_week, lk.period_index) in X:
+            model.Add(X[lk.teacher_id, lk.section_id, lk.subject_id, lk.day_of_week, lk.period_index] == 1)
+        else:
+            # Reassign to an active eligible department teacher if original teacher is absent
+            sub_vars = [
+                X[t.id, lk.section_id, lk.subject_id, lk.day_of_week, lk.period_index]
+                for t in eligible
+                if (t.id, lk.section_id, lk.subject_id, lk.day_of_week, lk.period_index) in X
+            ]
+            if sub_vars:
+                model.Add(sum(sub_vars) == 1)
 
     # Constraint: Maintain subject quotas for each section
     for (c_id, s_id), count in req_counts.items():
@@ -1022,9 +1061,9 @@ def repair_schedule(
             continue
         c = section_map.get(c_id)
         is_specialized = c and is_special_track(c.program_type) and (
-            s_id > 8 or is_track_matching_subject(c.program_type, sub.name if sub else "")
+            s_id > 8 and is_track_matching_subject(c.program_type, sub.name if sub else "")
         )
-        sec_periods = all_periods if is_specialized else [1, 2, 3, 4, 5, 6, 7]
+        sec_periods = [8, 9] if is_specialized else [1, 2, 3, 4, 5, 6, 7]
         eligible = dept_teachers.get(sub.department_id, [])
         all_slots = [
             X[t.id, c_id, s_id, d, p]
@@ -1116,17 +1155,17 @@ def repair_schedule(
     # Build new schedule slots list
     repaired_slots: List[ScheduleSlot] = []
 
-    # Preserve locked slots as fresh instances, reassigning to active teacher if adviser is on leave
-    for lk in locked_slots:
-        assigned_t_id = lk.teacher_id
+    # Preserve homeroom slots as fresh instances, reassigning to active teacher if adviser is on leave
+    for hm in homeroom_slots:
+        assigned_t_id = hm.teacher_id
         if assigned_t_id in absent_teacher_ids:
             # Adviser is on leave: pick an active teacher who isn't already assigned at this time
             sub_teacher = next(
                 (
                     t for t in active_teachers
                     if not any(
-                        s.teacher_id == t.id and s.day_of_week == lk.day_of_week and s.period_index == lk.period_index
-                        for s in locked_slots
+                        s.teacher_id == t.id and s.day_of_week == hm.day_of_week and s.period_index == hm.period_index
+                        for s in homeroom_slots
                     )
                 ),
                 active_teachers[0],
@@ -1135,25 +1174,26 @@ def repair_schedule(
 
         repaired_slots.append(
             ScheduleSlot(
-                section_id=lk.section_id,
-                subject_id=lk.subject_id,
+                section_id=hm.section_id,
+                subject_id=hm.subject_id,
                 teacher_id=assigned_t_id,
-                day_of_week=lk.day_of_week,
-                period_index=lk.period_index,
+                day_of_week=hm.day_of_week,
+                period_index=hm.period_index,
                 is_locked=True,
             )
         )
 
-    # Extract solved slots
+    # Extract solved academic slots from X (preserving original locked flag on manually pinned slots)
     for (t_id, c_id, s_id, d, p), var in X.items():
         if solver.Value(var) == 1:
+            is_pinned = (c_id, s_id, d, p) in locked_slot_coords
             slot = ScheduleSlot(
                 section_id=c_id,
                 subject_id=s_id,
                 teacher_id=t_id,
                 day_of_week=d,
                 period_index=p,
-                is_locked=False,
+                is_locked=is_pinned,
             )
             repaired_slots.append(slot)
 
