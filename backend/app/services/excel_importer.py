@@ -493,7 +493,30 @@ def import_sections_from_items(
         if adviser_id and adviser_id > 0:
             adviser = session.get(Teacher, adviser_id)
             if adviser:
-                # Remove previous adviser of this section if different
+                # 1. If adviser was already advising a DIFFERENT section, reassign old section's Homeroom slot
+                old_sec_id = adviser.advisory_section_id
+                if old_sec_id and old_sec_id != target_sec.id:
+                    old_hr_slot = session.exec(
+                        select(ScheduleSlot).where(
+                            ScheduleSlot.section_id == old_sec_id,
+                            ScheduleSlot.day_of_week == 0,
+                            ScheduleSlot.period_index == 1,
+                            ScheduleSlot.teacher_id == adviser.id,
+                        )
+                    ).first()
+                    if old_hr_slot:
+                        sub_t = session.exec(
+                            select(Teacher).where(
+                                Teacher.status == TeacherStatus.ACTIVE,
+                                Teacher.advisory_section_id == None,
+                                Teacher.id != adviser.id,
+                            )
+                        ).first()
+                        if sub_t:
+                            old_hr_slot.teacher_id = sub_t.id
+                            session.add(old_hr_slot)
+
+                # 2. Remove previous adviser of this section if different
                 prev_advisers = session.exec(
                     select(Teacher).where(Teacher.advisory_section_id == target_sec.id, Teacher.id != adviser.id)
                 ).all()
