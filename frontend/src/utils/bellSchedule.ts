@@ -147,22 +147,83 @@ export function getPeriodHeaders(durationMinutes: number = 60, maxPeriods: numbe
   return headers;
 }
 
+export interface CustomBreakTimings {
+  flagCeremonyTime?: string;
+  morningBreakTime?: string;
+  lunchBreakTime?: string;
+}
+
+const STORAGE_KEY_CUSTOM_BREAKS = "schedmaster_custom_bell_breaks";
+
+export function loadCustomBreakTimings(): CustomBreakTimings {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_CUSTOM_BREAKS);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch {
+    // fallback to defaults
+  }
+  return {
+    flagCeremonyTime: "6:45-7:00",
+    morningBreakTime: "9:00-9:15",
+    lunchBreakTime: "11:15-12:00",
+  };
+}
+
+export function saveCustomBreakTimings(timings: CustomBreakTimings): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_CUSTOM_BREAKS, JSON.stringify(timings));
+    window.dispatchEvent(new CustomEvent("schedmaster_bell_breaks_updated", { detail: timings }));
+  } catch (e) {
+    console.error("Failed to save custom bell breaks:", e);
+  }
+}
+
 /**
  * Returns dynamic period row layout with Flag Ceremony, Recess, and Lunch breaks
  * (for ClassTimetableGrid and TeacherTimetableGrid).
  */
-export function getPeriodRows(durationMinutes: number = 60, maxPeriods: number = 7): PeriodRow[] {
+export function getPeriodRows(
+  durationMinutes: number = 60,
+  maxPeriods: number = 7,
+  customBreaks?: CustomBreakTimings
+): PeriodRow[] {
+  const breaks = customBreaks || loadCustomBreakTimings();
+  const flagTime = breaks.flagCeremonyTime || "6:45-7:00";
+  const breakTime = breaks.morningBreakTime || "9:00-9:15";
+  const lunchTime = breaks.lunchBreakTime || "11:15-12:00";
+
   const dur = Math.max(20, Math.min(240, Math.round((durationMinutes || 60) / 10) * 10));
+
+  if (dur === 60) {
+    const rows: PeriodRow[] = [
+      { type: "FIXED_ALL", time: flagTime, label: "Flag Ceremony" },
+      { type: "PERIOD", period: 1, time: "7:00-8:00" },
+      { type: "PERIOD", period: 2, time: "8:00-9:00" },
+      { type: "FIXED_ALL", time: breakTime, label: "Break Time" },
+      { type: "PERIOD", period: 3, time: "9:15-10:15" },
+      { type: "PERIOD", period: 4, time: "10:15-11:15" },
+      { type: "FIXED_ALL", time: lunchTime, label: "Lunch Break" },
+      { type: "PERIOD", period: 5, time: "12:00-1:00" },
+      { type: "PERIOD", period: 6, time: "1:00-2:00" },
+      { type: "PERIOD", period: 7, time: "2:00-3:00" },
+    ];
+    if (maxPeriods >= 8) rows.push({ type: "PERIOD", period: 8, time: "3:00-4:00" });
+    if (maxPeriods >= 9) rows.push({ type: "PERIOD", period: 9, time: "4:00-5:00" });
+    if (maxPeriods < 8) rows.push({ type: "SPECIAL", time: "3:00-4:00", label: "SPA / Special Program & Consultation" });
+    return rows;
+  }
 
   if (dur === 30) {
     const rows: PeriodRow[] = [
-      { type: "FIXED_ALL", time: "6:45-7:00", label: "Flag Ceremony" },
+      { type: "FIXED_ALL", time: flagTime, label: "Flag Ceremony" },
       { type: "PERIOD", period: 1, time: "7:00-7:30" },
       { type: "PERIOD", period: 2, time: "7:30-8:00" },
-      { type: "FIXED_ALL", time: "8:00-8:15", label: "Morning Recess" },
+      { type: "FIXED_ALL", time: breakTime, label: "Morning Recess" },
       { type: "PERIOD", period: 3, time: "8:15-8:45" },
       { type: "PERIOD", period: 4, time: "8:45-9:15" },
-      { type: "FIXED_ALL", time: "9:15-9:45", label: "Nutrition & Health Break" },
+      { type: "FIXED_ALL", time: lunchTime, label: "Nutrition & Health Break" },
       { type: "PERIOD", period: 5, time: "9:45-10:15" },
       { type: "PERIOD", period: 6, time: "10:15-10:45" },
       { type: "PERIOD", period: 7, time: "10:45-11:15" },
@@ -174,13 +235,13 @@ export function getPeriodRows(durationMinutes: number = 60, maxPeriods: number =
   }
   if (dur === 40) {
     const rows: PeriodRow[] = [
-      { type: "FIXED_ALL", time: "6:45-7:00", label: "Flag Ceremony" },
+      { type: "FIXED_ALL", time: flagTime, label: "Flag Ceremony" },
       { type: "PERIOD", period: 1, time: "7:00-7:40" },
       { type: "PERIOD", period: 2, time: "7:40-8:20" },
-      { type: "FIXED_ALL", time: "8:20-8:40", label: "Morning Recess" },
+      { type: "FIXED_ALL", time: breakTime, label: "Morning Recess" },
       { type: "PERIOD", period: 3, time: "8:40-9:20" },
       { type: "PERIOD", period: 4, time: "9:20-10:00" },
-      { type: "FIXED_ALL", time: "10:00-10:40", label: "Shift Transition / Lunch Break" },
+      { type: "FIXED_ALL", time: lunchTime, label: "Shift Transition / Lunch Break" },
       { type: "PERIOD", period: 5, time: "10:40-11:20" },
       { type: "PERIOD", period: 6, time: "11:20-12:00" },
       { type: "PERIOD", period: 7, time: "12:00-12:40" },
@@ -192,13 +253,13 @@ export function getPeriodRows(durationMinutes: number = 60, maxPeriods: number =
   }
   if (dur === 50) {
     const rows: PeriodRow[] = [
-      { type: "FIXED_ALL", time: "6:45-7:00", label: "Flag Ceremony" },
+      { type: "FIXED_ALL", time: flagTime, label: "Flag Ceremony" },
       { type: "PERIOD", period: 1, time: "7:00-7:50" },
       { type: "PERIOD", period: 2, time: "7:50-8:40" },
-      { type: "FIXED_ALL", time: "8:40-9:00", label: "Break Time" },
+      { type: "FIXED_ALL", time: breakTime, label: "Break Time" },
       { type: "PERIOD", period: 3, time: "9:00-9:50" },
       { type: "PERIOD", period: 4, time: "9:50-10:40" },
-      { type: "FIXED_ALL", time: "10:40-11:30", label: "Lunch Break" },
+      { type: "FIXED_ALL", time: lunchTime, label: "Lunch Break" },
       { type: "PERIOD", period: 5, time: "11:30-12:20" },
       { type: "PERIOD", period: 6, time: "12:20-1:10" },
       { type: "PERIOD", period: 7, time: "1:10-2:00" },
@@ -208,52 +269,27 @@ export function getPeriodRows(durationMinutes: number = 60, maxPeriods: number =
     if (maxPeriods < 8) rows.push({ type: "SPECIAL", time: "2:00-3:00", label: "Remedial Coaching & Lesson Prep" });
     return rows;
   }
-  if (dur === 60) {
-    const rows: PeriodRow[] = [
-      { type: "FIXED_ALL", time: "6:45-7:00", label: "Flag Ceremony" },
-      { type: "PERIOD", period: 1, time: "7:00-8:00" },
-      { type: "PERIOD", period: 2, time: "8:00-9:00" },
-      { type: "FIXED_ALL", time: "9:00-9:15", label: "Break Time" },
-      { type: "PERIOD", period: 3, time: "9:15-10:15" },
-      { type: "PERIOD", period: 4, time: "10:15-11:15" },
-      { type: "FIXED_ALL", time: "11:15-12:00", label: "Lunch Break" },
-      { type: "PERIOD", period: 5, time: "12:00-1:00" },
-      { type: "PERIOD", period: 6, time: "1:00-2:00" },
-      { type: "PERIOD", period: 7, time: "2:00-3:00" },
-    ];
-    if (maxPeriods >= 8) rows.push({ type: "PERIOD", period: 8, time: "3:00-4:00" });
-    if (maxPeriods >= 9) rows.push({ type: "PERIOD", period: 9, time: "4:00-5:00" });
-    if (maxPeriods < 8) rows.push({ type: "SPECIAL", time: "3:00-4:00", label: "SPA / Special Program & Consultation" });
-    return rows;
-  }
 
-  // Dynamic algorithm for any duration between 20m and 240m
-  const recessMins = dur <= 30 ? 15 : 20;
-  const lunchMins = dur <= 30 ? 30 : dur <= 50 ? 40 : 45;
-
+  // Dynamic algorithm for any other duration between 20m and 240m
   const rows: PeriodRow[] = [
-    { type: "FIXED_ALL", time: "6:45-7:00", label: "Flag Ceremony" },
+    { type: "FIXED_ALL", time: flagTime, label: "Flag Ceremony" },
   ];
 
   let currentMin = 7 * 60; // 7:00 AM
 
   for (let p = 1; p <= maxPeriods; p++) {
     if (p === 3) {
-      const recessEnd = currentMin + recessMins;
       rows.push({
         type: "FIXED_ALL",
-        time: `${formatMinutesToTime(currentMin, false)}-${formatMinutesToTime(recessEnd, false)}`,
+        time: breakTime,
         label: "Recess / Morning Break",
       });
-      currentMin = recessEnd;
     } else if (p === 5) {
-      const lunchEnd = currentMin + lunchMins;
       rows.push({
         type: "FIXED_ALL",
-        time: `${formatMinutesToTime(currentMin, false)}-${formatMinutesToTime(lunchEnd, false)}`,
+        time: lunchTime,
         label: "Lunch Break / Midday Rest",
       });
-      currentMin = lunchEnd;
     }
 
     const endMin = currentMin + dur;

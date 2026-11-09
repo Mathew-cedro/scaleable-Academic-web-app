@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react";
-import { getPeriodRows } from "../utils/bellSchedule";
+import { getPeriodRows, loadCustomBreakTimings, type CustomBreakTimings } from "../utils/bellSchedule";
 import {
   GraduationCap,
   Printer,
@@ -17,8 +17,11 @@ import {
   UserPlus,
   AlertTriangle,
   ShieldCheck,
-  Building
+  Building,
+  FileDown,
 } from "lucide-react";
+import { api } from "../api/client";
+import { ExportDocxModal } from "./ExportDocxModal";
 import {
   evaluateSlotConflict,
   getSectionConflictStats
@@ -96,6 +99,21 @@ export const ClassTimetableGrid = ({
   const [adviserSearch, setAdviserSearch] = useState("");
   const [isUpdatingAdviser, setIsUpdatingAdviser] = useState(false);
 
+  // Export Docx Modal State
+  const [isExportDocxModalOpen, setIsExportDocxModalOpen] = useState(false);
+  const [isExportingDocx, setIsExportingDocx] = useState(false);
+  const [customBreaks, setCustomBreaks] = useState<CustomBreakTimings>(loadCustomBreakTimings());
+
+  useEffect(() => {
+    const handleBreaksUpdated = (e: any) => {
+      if (e.detail) setCustomBreaks(e.detail);
+    };
+    window.addEventListener("schedmaster_bell_breaks_updated", handleBreaksUpdated);
+    return () => {
+      window.removeEventListener("schedmaster_bell_breaks_updated", handleBreaksUpdated);
+    };
+  }, []);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const adviserDropdownRef = useRef<HTMLDivElement>(null);
@@ -156,7 +174,10 @@ export const ClassTimetableGrid = ({
   }, [slots, currentSection]);
 
   const maxPeriods = isSpecialTrack || hasExtendedSlots ? 9 : 7;
-  const periodRows = useMemo(() => getPeriodRows(durationMinutes, maxPeriods), [durationMinutes, maxPeriods]);
+  const periodRows = useMemo(
+    () => getPeriodRows(durationMinutes, maxPeriods, customBreaks),
+    [durationMinutes, maxPeriods, customBreaks]
+  );
 
   // Navigation handlers for Prev / Next section
   const currentIndex = sections.findIndex((s) => s.id === currentSection?.id);
@@ -627,6 +648,15 @@ export const ClassTimetableGrid = ({
             )}
             <button
               type="button"
+              onClick={() => setIsExportDocxModalOpen(true)}
+              className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 hover:text-[#A91079] rounded-xl text-xs font-bold transition shadow-2xs flex items-center gap-1.5 cursor-pointer"
+              title="Export official editable Word document with customizable breaks and DepEd signatures"
+            >
+              <FileDown className="w-3.5 h-3.5 text-[#A91079]" />
+              <span>Export Word (.docx)</span>
+            </button>
+            <button
+              type="button"
               onClick={() => window.print()}
               className="px-4 py-2 bg-[#A91079] hover:bg-[#8F0B66] text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
@@ -881,6 +911,30 @@ export const ClassTimetableGrid = ({
           </table>
         </div>
       </div>
+
+      {/* Export Official DepEd Class Program Word Document Modal */}
+      {currentSection && (
+        <ExportDocxModal
+          isOpen={isExportDocxModalOpen}
+          onClose={() => setIsExportDocxModalOpen(false)}
+          sectionName={currentSection.name}
+          gradeLevel={currentSection.grade_level}
+          programType={currentSection.program_type}
+          adviserName={adviser?.name}
+          loading={isExportingDocx}
+          onConfirmExport={async (params) => {
+            try {
+              setIsExportingDocx(true);
+              await api.downloadSectionDocx(currentSection.id, params);
+            } catch (err: any) {
+              console.error("Export failed:", err);
+              alert(err.message || "Failed to export class program Word document.");
+            } finally {
+              setIsExportingDocx(false);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

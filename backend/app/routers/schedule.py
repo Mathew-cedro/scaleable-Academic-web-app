@@ -8,6 +8,8 @@ import json
 import time
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import Response
+from app.services.docx_exporter import generate_class_schedule_document
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
@@ -1116,3 +1118,52 @@ def list_deployments(session: Session = Depends(get_session)):
         )
     return results
 
+
+
+@router.get("/export/docx/{section_id}")
+def export_section_class_program_docx(
+    section_id: int,
+    school_year: str = "2026-2027",
+    flag_ceremony_time: str = "6:45-7:00",
+    morning_break_time: str = "9:00-9:15",
+    lunch_break_time: str = "11:15-12:00",
+    adviser_name: Optional[str] = None,
+    grade_chairman: Optional[str] = None,
+    consultant_1: Optional[str] = None,
+    consultant_2: Optional[str] = None,
+    principal_name: Optional[str] = "Dr. Eleanor Vance",
+    session: Session = Depends(get_session),
+):
+    """Export official DepEd Class Program for a section as a Word document."""
+    section = session.get(Section, section_id)
+    if not section:
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    slots = session.exec(select(ScheduleSlot).where(ScheduleSlot.section_id == section_id)).all()
+    teachers = session.exec(select(Teacher)).all()
+    subjects = session.exec(select(Subject)).all()
+
+    buf = generate_class_schedule_document(
+        section=section,
+        slots=slots,
+        teachers=teachers,
+        subjects=subjects,
+        school_year=school_year,
+        flag_ceremony_time=flag_ceremony_time,
+        morning_break_time=morning_break_time,
+        lunch_break_time=lunch_break_time,
+        adviser_name=adviser_name,
+        grade_chairman=grade_chairman,
+        consultant_1=consultant_1,
+        consultant_2=consultant_2,
+        principal_name=principal_name,
+    )
+
+    clean_sec_name = "".join(c for c in section.name if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
+    filename = f"Class_Program_{clean_sec_name}.docx"
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

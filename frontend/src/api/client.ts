@@ -674,4 +674,45 @@ export const api = {
     if (!res.ok) throw new Error("Failed to fetch deployments");
     return res.json();
   },
+
+  async downloadSectionDocx(
+    sectionId: number,
+    params?: {
+      school_year?: string;
+      flag_ceremony_time?: string;
+      morning_break_time?: string;
+      lunch_break_time?: string;
+      adviser_name?: string;
+      grade_chairman?: string;
+      consultant_1?: string;
+      consultant_2?: string;
+      principal_name?: string;
+    }
+  ): Promise<void> {
+    const query = new URLSearchParams();
+    if (params?.school_year) query.set("school_year", params.school_year);
+    if (params?.flag_ceremony_time) query.set("flag_ceremony_time", params.flag_ceremony_time);
+    if (params?.morning_break_time) query.set("morning_break_time", params.morning_break_time);
+    if (params?.lunch_break_time) query.set("lunch_break_time", params.lunch_break_time);
+    if (params?.adviser_name) query.set("adviser_name", params.adviser_name);
+    if (params?.grade_chairman) query.set("grade_chairman", params.grade_chairman);
+    if (params?.consultant_1) query.set("consultant_1", params.consultant_1);
+    if (params?.consultant_2) query.set("consultant_2", params.consultant_2);
+    if (params?.principal_name) query.set("principal_name", params.principal_name);
+
+    const url = `${API_BASE}/schedule/export/docx/${sectionId}?${query.toString()}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, "Failed to download class program document"));
+    }
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.setAttribute("download", `Class_Program_${sectionId}.docx`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(downloadUrl);
+  },
 };
