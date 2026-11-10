@@ -6,6 +6,7 @@ with configurable bell schedule break rows and official DepEd 4-tier signature b
 
 import io
 import os
+import re
 from typing import Dict, List, Optional
 import docx
 from docx.shared import Inches, Pt, RGBColor
@@ -15,6 +16,10 @@ from docx.oxml import parse_xml, OxmlElement
 from docx.oxml.ns import nsdecls, qn
 
 from app.models import Section, ScheduleSlot, Teacher, Subject
+
+DEFAULT_TEMPLATE_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "templates", "class_program_template.docx"
+)
 
 
 def replace_text_in_paragraph(paragraph, replacements: Dict[str, str]):
@@ -27,6 +32,30 @@ def replace_text_in_paragraph(paragraph, replacements: Dict[str, str]):
             replaced = True
     if replaced:
         paragraph.text = full_text
+
+
+def replace_in_p(p, find_regex: str, replacement: str, count: int = 0):
+    """Replaces regex pattern in paragraph while preserving font styling."""
+    if re.search(find_regex, p.text, flags=re.IGNORECASE):
+        font_name = "Bookman Old Style"
+        font_size = Pt(10)
+        is_bold = None
+        for r in p.runs:
+            if r.font.name:
+                font_name = r.font.name
+            if r.font.size:
+                font_size = r.font.size
+            if r.font.bold is not None:
+                is_bold = r.font.bold
+                break
+
+        new_text = re.sub(find_regex, replacement, p.text, count=count, flags=re.IGNORECASE)
+        p.text = new_text
+        if p.runs:
+            p.runs[0].font.name = font_name
+            p.runs[0].font.size = font_size
+            if is_bold is not None:
+                p.runs[0].font.bold = is_bold
 
 
 def set_cell_margins(cell, top=80, bottom=80, left=100, right=100):
@@ -109,33 +138,159 @@ def generate_class_schedule_document(
     is_special_track = p_type not in ("BEC", "REGULAR", "STANDARD", "GENERAL")
     max_periods = 9 if is_special_track else 7
 
-    # If an external template is provided and exists, apply placeholder replacement logic
-    if template_path and os.path.exists(template_path):
-        doc = docx.Document(template_path)
-        replacements = {
-            "{Grade Level}": f"Grade {section.grade_level}",
-            "{track}": section.program_type or "BEC",
-            "{Section}": section.name,
-            "{Room}": section.room_number or "Room Unassigned",
-            "{Year}": school_year,
-            "{Name of Adviser}": adviser_name or "Unassigned Faculty",
-            "{Name of Chairman}": grade_chairman,
-            "{name of teacher}": consultant_1,
-            "{Name of teacher}": consultant_2,
-            "{position}": "Teacher III",
-            "{Principal name}": principal_name,
-        }
+    # Use official template format if available
+    active_template = template_path or DEFAULT_TEMPLATE_PATH
+    if active_template and os.path.exists(active_template):
+        doc = docx.Document(active_template)
 
-        for paragraph in doc.paragraphs:
-            replace_text_in_paragraph(paragraph, replacements)
+        # Clean section name if prefixed with Grade X
+        clean_sec_name = section.name
+        for prefix in [f"Grade {section.grade_level} - ", f"Grade {section.grade_level} "]:
+            if clean_sec_name.startswith(prefix):
+                clean_sec_name = clean_sec_name[len(prefix):]
 
-        for table in doc.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    for paragraph in cell.paragraphs:
-                        replace_text_in_paragraph(paragraph, replacements)
+        for p in doc.paragraphs:
+            replace_in_p(p, r'\{Grade Level\}', f"Grade {section.grade_level}")
+            replace_in_p(p, r'\{track\}', section.program_type or "BEC")
+            replace_in_p(p, r'\{Section\}', clean_sec_name)
+            replace_in_p(p, r'\{Room\}', section.room_number or "Room Unassigned")
+            replace_in_p(p, r'\{Year\}', school_year)
+            replace_in_p(p, r'\{Name of Adviser\}', adviser_name or "Unassigned Faculty")
+            replace_in_p(p, r'\{Name of Chairman\}', grade_chairman)
+            replace_in_p(p, r'\{Principal name\}', principal_name)
 
-        # Output to buffer
+        if len(doc.paragraphs) > 17:
+            replace_in_p(doc.paragraphs[16], r'\{\s*name of teacher\s*\}', consultant_1, count=1)
+            replace_in_p(doc.paragraphs[16], r'\{\s*name of teacher\s*\}', consultant_2, count=1)
+            replace_in_p(doc.paragraphs[17], r'\{\s*position\s*\}', "Teacher III", count=1)
+
+        # Populate Table 0
+        if doc.tables:
+            t = doc.tables[0]
+
+            # Time column updates
+            if len(t.rows) > 1 and len(t.rows[1].cells) > 0 and t.rows[1].cells[0].paragraphs:
+                p0 = t.rows[1].cells[0].paragraphs[0]
+                p0.text = flag_ceremony_time
+                if p0.runs:
+                    p0.runs[0].font.name = "Bookman Old Style"
+                    p0.runs[0].font.bold = True
+                    p0.runs[0].font.size = Pt(10)
+
+            if len(t.rows) > 4 and len(t.rows[4].cells) > 0 and t.rows[4].cells[0].paragraphs:
+                p0 = t.rows[4].cells[0].paragraphs[0]
+                p0.text = morning_break_time
+                if p0.runs:
+                    p0.runs[0].font.name = "Bookman Old Style"
+                    p0.runs[0].font.bold = True
+                    p0.runs[0].font.size = Pt(10)
+
+            if len(t.rows) > 7 and len(t.rows[7].cells) > 0 and t.rows[7].cells[0].paragraphs:
+                p0 = t.rows[7].cells[0].paragraphs[0]
+                p0.text = lunch_break_time
+                if p0.runs:
+                    p0.runs[0].font.name = "Bookman Old Style"
+                    p0.runs[0].font.bold = True
+                    p0.runs[0].font.size = Pt(10)
+
+            # Fill Break Row text across cols 1 to 5
+            for d in range(1, 6):
+                if len(t.rows) > 1 and len(t.rows[1].cells) > d:
+                    c1 = t.rows[1].cells[d]
+                    c1.text = ""
+                    p1 = c1.paragraphs[0]
+                    p1.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    r1 = p1.add_run("Flag Ceremony" if d == 1 else "Preliminaries")
+                    r1.font.name = "Bookman Old Style"
+                    r1.font.size = Pt(8.5)
+                    r1.font.italic = True
+                    r1.font.color.rgb = RGBColor(100, 100, 100)
+
+                if len(t.rows) > 4 and len(t.rows[4].cells) > d:
+                    c4 = t.rows[4].cells[d]
+                    c4.text = ""
+                    p4 = c4.paragraphs[0]
+                    p4.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    r4 = p4.add_run("RECESS")
+                    r4.font.name = "Bookman Old Style"
+                    r4.font.size = Pt(8.5)
+                    r4.font.italic = True
+                    r4.font.color.rgb = RGBColor(100, 100, 100)
+
+                if len(t.rows) > 7 and len(t.rows[7].cells) > d:
+                    c7 = t.rows[7].cells[d]
+                    c7.text = ""
+                    p7 = c7.paragraphs[0]
+                    p7.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    r7 = p7.add_run("LUNCH BREAK")
+                    r7.font.name = "Bookman Old Style"
+                    r7.font.size = Pt(8.5)
+                    r7.font.italic = True
+                    r7.font.color.rgb = RGBColor(100, 100, 100)
+
+            # Map instructional rows (Rows 2, 3, 5, 6, 8, 9, 10, 11, 12 to Periods 1 to 9)
+            row_period_map = {
+                2: 1, 3: 2, 5: 3, 6: 4, 8: 5, 9: 6, 10: 7, 11: 8, 12: 9
+            }
+
+            for row_idx, period_idx in row_period_map.items():
+                if row_idx >= len(t.rows):
+                    continue
+                row = t.rows[row_idx]
+                for d in range(1, 6):
+                    if d >= len(row.cells):
+                        continue
+                    day_idx = d - 1
+                    cell = row.cells[d]
+                    cell.text = ""
+                    p = cell.paragraphs[0]
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    p.paragraph_format.space_before = Pt(0)
+                    p.paragraph_format.space_after = Pt(0)
+
+                    # Monday Period 1 is DepEd HRGP
+                    if day_idx == 0 and period_idx == 1:
+                        r_sub = p.add_run("HRGP\n")
+                        r_sub.font.name = "Bookman Old Style"
+                        r_sub.font.size = Pt(8.5)
+                        r_sub.font.bold = True
+                        r_tch = p.add_run(adviser_name or "Adviser")
+                        r_tch.font.name = "Bookman Old Style"
+                        r_tch.font.size = Pt(8.0)
+                        r_tch.font.underline = True
+                        continue
+
+                    slot = slot_matrix[day_idx].get(period_idx)
+                    if slot:
+                        sub = subject_map.get(slot.subject_id)
+                        sub_name = getattr(slot, "subject_name", None) or (sub.name if sub else "SUBJECT")
+                        if len(sub_name) > 16:
+                            if "Technology & Livelihood" in sub_name:
+                                sub_name = "TLE"
+                            elif "Music, Arts, PE" in sub_name:
+                                sub_name = "MAPEH"
+                            elif "Araling Panlipunan" in sub_name:
+                                sub_name = "AP"
+                            elif "Values Education" in sub_name:
+                                sub_name = "EsP"
+
+                        r_sub = p.add_run(f"{sub_name}\n")
+                        r_sub.font.name = "Bookman Old Style"
+                        r_sub.font.size = Pt(8.5)
+                        r_sub.font.bold = True
+
+                        tch = teacher_map.get(slot.teacher_id)
+                        tch_name = getattr(slot, "teacher_name", None) or (tch.name if tch else "Faculty")
+                        r_tch = p.add_run(tch_name)
+                        r_tch.font.name = "Bookman Old Style"
+                        r_tch.font.size = Pt(8.0)
+                        r_tch.font.underline = True
+                    else:
+                        r_empty = p.add_run("-")
+                        r_empty.font.name = "Bookman Old Style"
+                        r_empty.font.size = Pt(8.5)
+                        r_empty.font.color.rgb = RGBColor(180, 180, 180)
+
         buf = io.BytesIO()
         doc.save(buf)
         buf.seek(0)
