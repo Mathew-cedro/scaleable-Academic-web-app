@@ -474,7 +474,19 @@ export const MasterTimetableGrid = ({
                 </thead>
 
                 <tbody className="divide-y divide-slate-100">
-                  {filteredSections.map((sec) => (
+                  {filteredSections.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={periodHeaders.length + 3}
+                        className="py-12 px-4 text-center text-slate-400 bg-white"
+                      >
+                        <Calendar className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                        <p className="text-xs font-bold text-slate-600">No sections found matching current filter criteria.</p>
+                        <p className="text-[11px] text-slate-400 mt-1">Try clearing search terms or selecting another grade/conflict filter.</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredSections.map((sec) => (
                     <tr key={sec.id} className="hover:bg-slate-50/40 transition">
                       {/* Section Info (Sticky Column - Solid Opaque Background to Prevent Scrolling Overlap) */}
                       <td className="p-3 font-bold text-slate-900 border-r border-slate-200 bg-white group-hover:bg-slate-50/95 sticky left-0 z-10 w-56 min-w-[220px] max-w-[220px] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)] align-top">
@@ -567,7 +579,7 @@ export const MasterTimetableGrid = ({
                       {/* Period 7 */}
                       {renderMasterSlotCell(sec, d, 7, slotMap, onSlotClick, onSlotContextMenu, onEmptySlotClick, globalSlots, teachers, sections)}
                     </tr>
-                  ))}
+                  )))}
                 </tbody>
               </table>
             </div>

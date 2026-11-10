@@ -181,8 +181,10 @@ export const SubstitutionDispatcherModal = ({
 
   // Initialize slot map when modal opens or absentTeacher changes
   useEffect(() => {
-    applyStrategy("LEAST_LOAD");
-  }, [absentTeacher, orphanedSlots]);
+    if (isOpen && absentTeacher) {
+      applyStrategy("LEAST_LOAD");
+    }
+  }, [isOpen, absentTeacher?.id]);
 
   // Handle single slot manual override change
   const handleSlotTeacherChange = (slotId: number, teacherId: number) => {

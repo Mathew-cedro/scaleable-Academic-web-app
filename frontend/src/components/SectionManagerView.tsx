@@ -548,7 +548,8 @@ export const SectionManagerView = ({
         onClose={() => setIsBatchOpen(false)}
         existingSections={sections}
         onBatchCreated={() => {
-          // Handled via WebSocket broadcast automatically, or trigger re-fetch
+          if (onRefreshData) onRefreshData();
+          window.dispatchEvent(new CustomEvent("schedmaster_sections_refresh"));
         }}
       />
 

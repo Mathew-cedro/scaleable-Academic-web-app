@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   FileText,
   X,
@@ -6,6 +6,7 @@ import {
   Clock,
   Users,
   RotateCcw,
+  AlertCircle,
 } from "lucide-react";
 import {
   loadCustomBreakTimings,
@@ -58,31 +59,45 @@ export const ExportDocxModal: React.FC<Props> = ({
   const [principalName, setPrincipalName] = useState("Dr. Eleanor Vance");
 
   const [saveBreaksAsDefault, setSaveBreaksAsDefault] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Sync adviser name and clear errors whenever modal opens or section adviser changes
+  useEffect(() => {
+    if (isOpen) {
+      setAdvName(adviserName || "Unassigned Faculty");
+      setError(null);
+    }
+  }, [isOpen, adviserName]);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (saveBreaksAsDefault) {
-      saveCustomBreakTimings({
-        flagCeremonyTime: flagTime.trim(),
-        morningBreakTime: breakTime.trim(),
-        lunchBreakTime: lunchTime.trim(),
-      });
-    }
+    setError(null);
+    try {
+      if (saveBreaksAsDefault) {
+        saveCustomBreakTimings({
+          flagCeremonyTime: flagTime.trim(),
+          morningBreakTime: breakTime.trim(),
+          lunchBreakTime: lunchTime.trim(),
+        });
+      }
 
-    await onConfirmExport({
-      school_year: schoolYear.trim(),
-      flag_ceremony_time: flagTime.trim(),
-      morning_break_time: breakTime.trim(),
-      lunch_break_time: lunchTime.trim(),
-      adviser_name: advName.trim(),
-      grade_chairman: gradeChairman.trim(),
-      consultant_1: consultant1.trim(),
-      consultant_2: consultant2.trim(),
-      principal_name: principalName.trim(),
-    });
-    onClose();
+      await onConfirmExport({
+        school_year: schoolYear.trim(),
+        flag_ceremony_time: flagTime.trim(),
+        morning_break_time: breakTime.trim(),
+        lunch_break_time: lunchTime.trim(),
+        adviser_name: advName.trim(),
+        grade_chairman: gradeChairman.trim(),
+        consultant_1: consultant1.trim(),
+        consultant_2: consultant2.trim(),
+        principal_name: principalName.trim(),
+      });
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || "Failed to generate class program document. Please verify parameters.");
+    }
   };
 
   const handleResetBreaks = () => {
@@ -120,6 +135,13 @@ export const ExportDocxModal: React.FC<Props> = ({
 
         {/* Scrollable Form Body */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-5 text-xs">
+          {error && (
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 flex items-center gap-2.5 font-semibold text-xs animate-in fade-in">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
           {/* Section 1: Bell Schedule Break Timings */}
           <div className="space-y-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
             <div className="flex items-center justify-between">

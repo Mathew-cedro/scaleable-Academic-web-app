@@ -21,6 +21,7 @@ interface Teacher {
   position: string;
   is_adviser: boolean;
   advisory_section_id?: number | null;
+  status?: string;
 }
 
 interface ParsedSectionRow {
@@ -458,7 +459,7 @@ export const ImportSectionsExcelModal: React.FC<Props> = ({
                               <option value="">(No Adviser Assigned)</option>
                               {teachers.map((t) => (
                                 <option key={t.id} value={t.id}>
-                                  {t.name} ({t.position})
+                                  {t.name} ({t.position}){t.status && t.status !== "Active" ? ` • (${t.status})` : ""}
                                 </option>
                               ))}
                             </select>

@@ -142,8 +142,9 @@ export const PreFlightReadinessCard: React.FC<Props> = ({
       (s) => !activeTeachers.some((t) => t.advisory_section_id === s.id)
     );
 
-    const hasCriticalIssues = deptChecks.some((c) => c.status === "CRITICAL");
-    const hasWarnings = deptChecks.some((c) => c.status === "WARNING") || sharedRooms.length > 0;
+    const isZeroSections = targetSections.length === 0;
+    const hasCriticalIssues = isZeroSections || deptChecks.some((c) => c.status === "CRITICAL");
+    const hasWarnings = !isZeroSections && (deptChecks.some((c) => c.status === "WARNING") || sharedRooms.length > 0);
 
     return {
       activeTeachersCount: activeTeachers.length,
@@ -153,7 +154,7 @@ export const PreFlightReadinessCard: React.FC<Props> = ({
       sectionsWithoutAdviser,
       hasCriticalIssues,
       hasWarnings,
-      readinessScore: hasCriticalIssues ? 65 : hasWarnings ? 92 : 100,
+      readinessScore: isZeroSections ? 0 : hasCriticalIssues ? 65 : hasWarnings ? 92 : 100,
     };
   }, [teachers, targetSections, departments]);
 
@@ -232,7 +233,9 @@ export const PreFlightReadinessCard: React.FC<Props> = ({
             {targetSections.length} Sections
           </div>
           <p className="text-[11px] text-slate-500 mt-0.5">
-            {targetSections.length === sections.length
+            {targetSections.length === 0
+              ? "No sections selected"
+              : targetSections.length === sections.length
               ? "Full school timetable (100%)"
               : `Selected ${targetSections.length} of ${sections.length}`}
           </p>

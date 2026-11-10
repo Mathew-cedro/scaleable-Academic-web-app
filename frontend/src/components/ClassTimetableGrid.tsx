@@ -298,6 +298,20 @@ export const ClassTimetableGrid = ({
     [selectedSectionId, slots, teachers, sections]
   );
 
+  if (sections.length === 0) {
+    return (
+      <div className="bg-white rounded-3xl border border-[#E5CCE3] p-12 text-center shadow-xs space-y-3">
+        <div className="w-12 h-12 rounded-2xl bg-[#FDF2FA] border border-[#E5CCE3] flex items-center justify-center text-[#A91079] mx-auto shadow-2xs">
+          <GraduationCap className="w-6 h-6" />
+        </div>
+        <h3 className="text-base font-extrabold text-slate-900">No Student Sections Found</h3>
+        <p className="text-xs text-slate-500 max-w-md mx-auto">
+          No class sections exist in the school roster yet. Go to the Section Management tab or import sections from Excel to create your student cohorts.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       {/* Search & Section Filter Control Bar */}
@@ -928,7 +942,7 @@ export const ClassTimetableGrid = ({
               await api.downloadSectionDocx(currentSection.id, params);
             } catch (err: any) {
               console.error("Export failed:", err);
-              alert(err.message || "Failed to export class program Word document.");
+              throw err;
             } finally {
               setIsExportingDocx(false);
             }

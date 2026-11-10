@@ -159,6 +159,20 @@ export const TeacherTimetableGrid = ({
   const maxAllowed = currentTeacher?.max_daily_hours || 6;
   const hasDailyOverload = maxDayLoad > maxAllowed;
 
+  if (teachers.length === 0) {
+    return (
+      <div className="bg-white rounded-3xl border border-[#E5CCE3] p-12 text-center shadow-xs space-y-3">
+        <div className="w-12 h-12 rounded-2xl bg-[#FDF2FA] border border-[#E5CCE3] flex items-center justify-center text-[#A91079] mx-auto shadow-2xs">
+          <User className="w-6 h-6" />
+        </div>
+        <h3 className="text-base font-extrabold text-slate-900">No Faculty Members Found</h3>
+        <p className="text-xs text-slate-500 max-w-md mx-auto">
+          No teachers exist in the school roster yet. Add faculty in the Faculty Workload or Department Dashboard to view individual teacher timetables.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       {/* Faculty Selector & Department Filter Control Bar */}
@@ -187,14 +201,18 @@ export const TeacherTimetableGrid = ({
                 onChange={(e) => onSelectTeacher(Number(e.target.value))}
                 className="appearance-none pl-3.5 pr-9 py-2 bg-slate-50 hover:bg-slate-100/90 border border-slate-300 focus:border-[#A91079] rounded-xl text-xs font-bold text-slate-900 focus:outline-hidden cursor-pointer transition shadow-2xs min-w-[240px] sm:min-w-[320px]"
               >
-                {filteredTeachers.map((t) => {
-                  const tDept = departments.find((d) => d.id === t.department_id);
-                  return (
-                    <option key={t.id} value={t.id}>
-                      {t.name} ({t.position} • {tDept?.code || "Dept"})
-                    </option>
-                  );
-                })}
+                {filteredTeachers.length === 0 ? (
+                  <option disabled value="">No matching faculty found</option>
+                ) : (
+                  filteredTeachers.map((t) => {
+                    const tDept = departments.find((d) => d.id === t.department_id);
+                    return (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.position} • {tDept?.code || "Dept"})
+                      </option>
+                    );
+                  })
+                )}
               </select>
               <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
