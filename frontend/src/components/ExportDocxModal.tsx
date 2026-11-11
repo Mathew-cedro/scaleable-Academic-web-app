@@ -12,6 +12,7 @@ import {
   loadCustomBreakTimings,
   saveCustomBreakTimings,
 } from "../utils/bellSchedule";
+import { useLanguage } from "../context/LanguageContext";
 
 interface Props {
   isOpen: boolean;
@@ -44,6 +45,7 @@ export const ExportDocxModal: React.FC<Props> = ({
   onConfirmExport,
   loading = false,
 }) => {
+  const { t, isTagalog } = useLanguage();
   const initialBreaks = loadCustomBreakTimings();
 
   // Form State
@@ -117,10 +119,10 @@ export const ExportDocxModal: React.FC<Props> = ({
             </div>
             <div>
               <h3 className="text-base font-black text-slate-900">
-                Export DepEd Class Program (.docx)
+                {t.exportDocx.title}
               </h3>
               <p className="text-xs text-slate-500 font-medium">
-                Grade {gradeLevel} {programType} • {sectionName}
+                {isTagalog ? "Baitang" : "Grade"} {gradeLevel} {programType} • {sectionName}
               </p>
             </div>
           </div>
@@ -147,7 +149,7 @@ export const ExportDocxModal: React.FC<Props> = ({
             <div className="flex items-center justify-between">
               <span className="font-extrabold text-slate-900 flex items-center gap-1.5">
                 <Clock className="w-4 h-4 text-[#A91079]" />
-                <span>Ceremony & Break Windows</span>
+                <span>{isTagalog ? "Oras ng Seremonya at mga Pahinga" : "Ceremony & Break Windows"}</span>
               </span>
               <button
                 type="button"
@@ -155,17 +157,17 @@ export const ExportDocxModal: React.FC<Props> = ({
                 className="text-[10px] font-bold text-slate-500 hover:text-[#A91079] flex items-center gap-1 cursor-pointer"
               >
                 <RotateCcw className="w-3 h-3" />
-                <span>Reset Standard (6:45, 9:00, 11:15)</span>
+                <span>{isTagalog ? "Ibalik sa Karaniwan (6:45, 9:00, 11:15)" : "Reset Standard (6:45, 9:00, 11:15)"}</span>
               </button>
             </div>
             <p className="text-[11px] text-slate-500">
-              Customize daily non-instructional intervals. These will appear in the schedule table rows.
+              {isTagalog ? "Isaayos ang oras ng seremonya at pahinga na lilitaw sa opisyal na dokumento." : "Customize daily non-instructional intervals. These will appear in the schedule table rows."}
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Flag Ceremony
+                  {t.breaks.flagCeremony}
                 </label>
                 <input
                   type="text"
@@ -179,7 +181,7 @@ export const ExportDocxModal: React.FC<Props> = ({
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Morning Break / Recess
+                  {t.breaks.morningBreak}
                 </label>
                 <input
                   type="text"
@@ -193,7 +195,7 @@ export const ExportDocxModal: React.FC<Props> = ({
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Lunch Break
+                  {t.breaks.lunchBreak}
                 </label>
                 <input
                   type="text"
@@ -213,7 +215,7 @@ export const ExportDocxModal: React.FC<Props> = ({
                 onChange={(e) => setSaveBreaksAsDefault(e.target.checked)}
                 className="w-3.5 h-3.5 rounded border-slate-300 accent-[#A91079]"
               />
-              <span>Save these break timings as my system-wide default view</span>
+              <span>{isTagalog ? "I-save ang mga oras na ito bilang default ng buong sistema" : "Save these break timings as my system-wide default view"}</span>
             </label>
           </div>
 
@@ -221,7 +223,7 @@ export const ExportDocxModal: React.FC<Props> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                Academic School Year
+                {t.exportDocx.schoolYear}
               </label>
               <input
                 type="text"
@@ -235,13 +237,13 @@ export const ExportDocxModal: React.FC<Props> = ({
 
             <div>
               <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                Class Adviser
+                {t.exportDocx.adviserName}
               </label>
               <input
                 type="text"
                 value={advName}
                 onChange={(e) => setAdvName(e.target.value)}
-                placeholder="Name of Class Adviser"
+                placeholder={isTagalog ? "Pangalan ng Gurong Tagapayo" : "Name of Class Adviser"}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-hidden focus:border-[#A91079]"
                 required
               />
@@ -252,13 +254,13 @@ export const ExportDocxModal: React.FC<Props> = ({
           <div className="space-y-3 p-4 rounded-2xl bg-[#FDF2FA]/60 border border-[#E5CCE3]">
             <span className="font-extrabold text-[#2E0249] flex items-center gap-1.5">
               <Users className="w-4 h-4 text-[#A91079]" />
-              <span>DepEd Form Signatories & Approvers</span>
+              <span>{t.exportDocx.signatories}</span>
             </span>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 mb-1">
-                  Grade Level Chairman
+                  {t.exportDocx.gradeChairman}
                 </label>
                 <input
                   type="text"
@@ -271,7 +273,7 @@ export const ExportDocxModal: React.FC<Props> = ({
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 mb-1">
-                  Principal IV (Final Approval)
+                  {t.exportDocx.principalName}
                 </label>
                 <input
                   type="text"
@@ -284,7 +286,7 @@ export const ExportDocxModal: React.FC<Props> = ({
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 mb-1">
-                  Consultant (Teacher III)
+                  {t.exportDocx.consultant1}
                 </label>
                 <input
                   type="text"
@@ -297,7 +299,7 @@ export const ExportDocxModal: React.FC<Props> = ({
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 mb-1">
-                  Consultant (Head Teacher-III)
+                  {t.exportDocx.consultant2}
                 </label>
                 <input
                   type="text"
@@ -313,7 +315,7 @@ export const ExportDocxModal: React.FC<Props> = ({
           {/* Footer Controls */}
           <div className="pt-2 flex items-center justify-between border-t border-slate-100">
             <span className="text-[11px] text-slate-400 font-medium">
-              Produces official editable Word (.docx) document.
+              {t.exportDocx.subtitle}
             </span>
             <div className="flex items-center gap-2">
               <button
@@ -321,7 +323,7 @@ export const ExportDocxModal: React.FC<Props> = ({
                 onClick={onClose}
                 className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold transition cursor-pointer"
               >
-                Cancel
+                {t.common.cancel}
               </button>
               <button
                 type="submit"
@@ -329,7 +331,7 @@ export const ExportDocxModal: React.FC<Props> = ({
                 className="px-5 py-2.5 rounded-xl bg-[#A91079] hover:bg-[#8F0B66] text-white font-extrabold shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <Download className="w-4 h-4" />
-                <span>{loading ? "Generating .docx..." : "Download Word Document"}</span>
+                <span>{loading ? t.exportDocx.exportingDocx : t.exportDocx.downloadDocxBtn}</span>
               </button>
             </div>
           </div>

@@ -57,6 +57,7 @@ import { formatDuration, formatDurationDetailed } from "../utils/bellSchedule";
 import { PreFlightReadinessCard } from "./PreFlightReadinessCard";
 import { GenerationCockpitModal } from "./GenerationCockpitModal";
 import { ScheduleHealthScorecard } from "./ScheduleHealthScorecard";
+import { useLanguage } from "../context/LanguageContext";
 
 interface ScheduleSlot {
   id: number;
@@ -268,6 +269,7 @@ export const GenerateMasterTab = ({
   onDeleteSection,
 }: Props) => {
   const isPrincipal = currentUser.role === "PRINCIPAL";
+  const { t, isTagalog } = useLanguage();
 
   // Side Panel Toggle State
   const [showSidePanel, setShowSidePanel] = useState<boolean>(true);
@@ -2682,17 +2684,17 @@ export const GenerateMasterTab = ({
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="px-2.5 py-0.5 rounded-full bg-white/15 text-[#F806CC] text-[10px] font-black uppercase tracking-wider border border-white/20 shadow-xs">
-                        Tier 1: Global Constraint Engine (OR-Tools CP-SAT v9.11)
+                        {t.tier1.badge}
                       </span>
                       <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-400/30">
                         DepEd DO 009, s. 2026 & RA 4670 Enforced
                       </span>
                     </div>
                     <h3 className="text-lg font-black text-white tracking-tight">
-                      Tier 1 Master Timetable Generator
+                      {isTagalog ? "Tier 1: Tagalikha ng Pangkalahatang Talaorasan" : "Tier 1 Master Timetable Generator"}
                     </h3>
                     <p className="text-xs text-pink-100/90 max-w-xl">
-                      Autonomous global constraint satisfaction for all {selectedGenerationSectionIds.size} selected sections with zero double-booking and RA 4670 6-hour daily ceiling enforcement.
+                      {t.tier1.subtitle}
                     </p>
                   </div>
 
@@ -2707,13 +2709,13 @@ export const GenerateMasterTab = ({
                         <Sparkles className="w-4 h-4" />
                         <span>
                           {loading
-                            ? "Solving Master Schedule..."
-                            : `Generate Master Schedule (${formatDuration(periodDuration)} Periods)`}
+                            ? t.tier1.generating
+                            : `${t.tier1.generateButton} (${formatDuration(periodDuration)})`}
                         </span>
                       </button>
                     ) : (
                       <div className="p-3 bg-white/10 rounded-2xl text-xs text-pink-200 text-center font-semibold border border-white/10">
-                        Principal authority required
+                        {isTagalog ? "Kailangan ng kapangyarihan ng Punong-Guro" : "Principal authority required"}
                       </div>
                     )}
 
@@ -2722,10 +2724,10 @@ export const GenerateMasterTab = ({
                       disabled={loading}
                       onClick={handleLaunchRepair}
                       className="py-3.5 px-5 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-98"
-                      title="Execute Fault-Tolerant Dynamic Repair"
+                      title={isTagalog ? "Mabilisang Pagsasaayos ng Talaorasan" : "Execute Fault-Tolerant Dynamic Repair"}
                     >
                       <RefreshCw className="w-4 h-4" />
-                      <span>Dynamic Repair</span>
+                      <span>{isTagalog ? "Mabilisang Pagsasaayos" : "Dynamic Repair"}</span>
                     </button>
                   </div>
                 </div>

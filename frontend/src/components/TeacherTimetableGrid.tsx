@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { api } from "../api/client";
 import { evaluateSlotConflict } from "../utils/scheduleConflictChecker";
+import { useLanguage } from "../context/LanguageContext";
 
 interface ScheduleSlot {
   id: number;
@@ -88,6 +89,7 @@ export const TeacherTimetableGrid = ({
   onEmptySlotClick,
   onAddTeacher,
 }: Props) => {
+  const { t, isTagalog } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDeptId, setSelectedDeptId] = useState<number | "ALL">("ALL");
   const [isExportingSF7, setIsExportingSF7] = useState(false);
@@ -261,7 +263,7 @@ export const TeacherTimetableGrid = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search faculty name, position..."
+              placeholder={isTagalog ? "Maghanap ng guro, posisyon..." : "Search faculty name, position..."}
               className="w-full pl-9 pr-4 py-2 bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-[#E5CCE3] focus:border-[#A91079] rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-hidden transition"
             />
           </div>
@@ -277,7 +279,7 @@ export const TeacherTimetableGrid = ({
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
-            All Departments ({teachers.length})
+            {isTagalog ? "Lahat ng Kagawaran" : "All Departments"} ({teachers.length})
           </button>
           {departments.map((dept) => {
             const count = teachers.filter((t) => t.department_id === dept.id).length;
@@ -373,7 +375,7 @@ export const TeacherTimetableGrid = ({
                 className="px-3.5 py-2 bg-[#FDF2FA] hover:bg-[#F9E2F4] border border-[#E5CCE3] text-[#A91079] rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
               >
                 <UserPlus className="w-3.5 h-3.5 text-[#A91079]" />
-                <span>+ Add Faculty</span>
+                <span>{isTagalog ? "+ Magdagdag ng Guro" : "+ Add Faculty"}</span>
               </button>
             )}
             <button
@@ -381,10 +383,10 @@ export const TeacherTimetableGrid = ({
               onClick={handleExportSF7}
               disabled={isExportingSF7}
               className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              title="Export official DepEd School Form 7 (School Personnel Assignment List and Basic Profile)"
+              title={t.common.exportSF7}
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>{isExportingSF7 ? "Exporting SF-7..." : "Export SF-7 (.xlsx)"}</span>
+              <span>{isExportingSF7 ? (isTagalog ? "Ipinoproseso..." : "Exporting SF-7...") : t.common.exportSF7}</span>
             </button>
             <button
               type="button"
@@ -392,7 +394,7 @@ export const TeacherTimetableGrid = ({
               className="px-4 py-2 bg-[#A91079] hover:bg-[#8F0B66] text-white rounded-xl text-xs font-bold transition shadow-md shadow-[#A91079]/20 flex items-center gap-1.5 cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print Schedule</span>
+              <span>{t.common.printSchedule}</span>
             </button>
           </div>
         </div>
@@ -402,7 +404,7 @@ export const TeacherTimetableGrid = ({
           <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2.5 text-xs text-red-800 no-print">
             <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
             <span>
-              <strong>{currentTeacher.name}</strong> is currently on <strong>{currentTeacher.status}</strong>. Teaching periods below require substitution dispatch or dynamic schedule repair.
+              <strong>{currentTeacher.name}</strong> {isTagalog ? "ay kasalukuyang" : "is currently on"} <strong>{currentTeacher.status === "On Leave" ? t.common.onLeave : currentTeacher.status}</strong>. {isTagalog ? "Ang mga yugto ng pagtuturo sa ibaba ay nangangailangan ng gurong panghalili." : "Teaching periods below require substitution dispatch or dynamic schedule repair."}
             </span>
           </div>
         )}
@@ -413,14 +415,14 @@ export const TeacherTimetableGrid = ({
             <thead>
               <tr className="bg-slate-100/90 text-black font-extrabold border-b-2 border-black text-xs sm:text-sm">
                 <th className="p-2.5 sm:p-3 border-r-2 border-black w-28 uppercase tracking-wider text-center">
-                  TIME
+                  {t.grid.time}
                 </th>
-                {DAYS.map((day) => (
+                {[t.days.monday, t.days.tuesday, t.days.wednesday, t.days.thursday, t.days.friday].map((dayName, idx) => (
                   <th
-                    key={day}
+                    key={idx}
                     className="p-2.5 sm:p-3 border-r-2 border-black last:border-r-0 uppercase tracking-wider min-w-[150px] text-center"
                   >
-                    {day}
+                    {dayName}
                   </th>
                 ))}
               </tr>
@@ -429,6 +431,17 @@ export const TeacherTimetableGrid = ({
               {periodRows.map((row) => {
                 // Fixed Breaks Row
                 if (row.type === "FIXED_ALL") {
+                  const upperLabel = (row.label || "").toUpperCase();
+                  const localizedLabel = !isTagalog
+                    ? row.label
+                    : upperLabel.includes("FLAG")
+                    ? t.breaks.flagCeremony
+                    : upperLabel.includes("RECESS") || upperLabel.includes("BREAK") || upperLabel.includes("MERYENDA")
+                    ? t.breaks.morningBreak
+                    : upperLabel.includes("LUNCH") || upperLabel.includes("TANGHALIAN")
+                    ? t.breaks.lunchBreak
+                    : row.label;
+
                   return (
                     <tr
                       key={row.time}
@@ -442,7 +455,7 @@ export const TeacherTimetableGrid = ({
                           key={day}
                           className="p-2 border-r-2 border-black last:border-r-0 text-center font-extrabold uppercase text-[11px] sm:text-xs tracking-wide"
                         >
-                          {row.label}
+                          {localizedLabel}
                         </td>
                       ))}
                     </tr>

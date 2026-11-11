@@ -13,6 +13,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import type { ReassignTeacherSlotsRequest, SlotReassignmentItem, UserProfile } from "../api/client";
+import { useLanguage } from "../context/LanguageContext";
 
 interface ScheduleSlot {
   id: number;
@@ -102,6 +103,7 @@ export const SubstitutionDispatcherModal = ({
   currentUser,
   onConfirmReassign,
 }: Props) => {
+  const { t, isTagalog } = useLanguage();
   if (!isOpen || !absentTeacher) return null;
 
   // Department Head teacher record (if any matching currentUser in department)
@@ -270,18 +272,18 @@ export const SubstitutionDispatcherModal = ({
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-purple-900 text-purple-100 tracking-wider">
-                  Tier 2: Minimal Perturbation Rescheduler (MPP)
+                  {t.tier2.badge}
                 </span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-                  {orphanedSlots.length} Orphaned Slots
+                  {orphanedSlots.length} {t.tier2.orphanedSlots}
                 </span>
               </div>
               <h3 className="text-base font-black text-slate-900 tracking-tight mt-0.5">
-                Class Load Prioritization & Substitution Dispatcher
+                {t.tier2.title}
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Substitute coverage for <strong className="text-slate-800">{absentTeacher.name}</strong> (
-                {absentTeacher.position}) • {deptObj?.name || "Department"}
+                {isTagalog ? "Panghalili para kay" : "Substitute coverage for"} <strong className="text-slate-800">{absentTeacher.name}</strong> (
+                {absentTeacher.position}) • {deptObj?.name || (isTagalog ? "Kagawaran" : "Department")}
               </p>
             </div>
           </div>
@@ -305,26 +307,26 @@ export const SubstitutionDispatcherModal = ({
           {/* Mathematical Disruption Metric Scorecard (Thesis Equation Sync) */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-gradient-to-r from-purple-50 via-pink-50/50 to-purple-50 p-3.5 rounded-2xl border border-purple-200/80">
             <div className="text-center p-2 bg-white/80 rounded-xl border border-purple-100 shadow-2xs">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700">Disruption Cost (&Delta;)</span>
-              <p className="text-base font-black text-purple-950 mt-0.5">{orphanedSlots.length} Slots</p>
-              <span className="text-[9px] text-gray-500">Minimization Target</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700">{t.tier2.disruptionCost}</span>
+              <p className="text-base font-black text-purple-950 mt-0.5">{orphanedSlots.length} {t.tier2.slotsPerturbed}</p>
+              <span className="text-[9px] text-gray-500">{isTagalog ? "Target na Paliitin" : "Minimization Target"}</span>
             </div>
             <div className="text-center p-2 bg-white/80 rounded-xl border border-purple-100 shadow-2xs">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Stability Index</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">{t.tier2.stabilityIndex}</span>
               <p className="text-base font-black text-emerald-800 mt-0.5">
                 {(((slots.length - orphanedSlots.length) / Math.max(slots.length, 1)) * 100).toFixed(1)}%
               </p>
-              <span className="text-[9px] text-gray-500">Timetable Preserved</span>
+              <span className="text-[9px] text-gray-500">{t.tier2.schedulePreserved}</span>
             </div>
             <div className="text-center p-2 bg-white/80 rounded-xl border border-purple-100 shadow-2xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-[#A91079]">DO 005, s. 2024</span>
-              <p className="text-base font-black text-[#A91079] mt-0.5">Underload Priority</p>
-              <span className="text-[9px] text-gray-500">&lt; 30 hrs/wk Preferred</span>
+              <p className="text-base font-black text-[#A91079] mt-0.5">{t.tier2.do005Policy}</p>
+              <span className="text-[9px] text-gray-500">{isTagalog ? "Prayoridad ang < 30 oras" : "< 30 hrs/wk Preferred"}</span>
             </div>
             <div className="text-center p-2 bg-white/80 rounded-xl border border-purple-100 shadow-2xs">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">RA 4670 Safety</span>
-              <p className="text-base font-black text-indigo-900 mt-0.5">&le; 6h / Day</p>
-              <span className="text-[9px] text-gray-500">Cap Auto-Checked</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">{t.tier2.ra4670Safety}</span>
+              <p className="text-base font-black text-indigo-900 mt-0.5">&le; 6h / {isTagalog ? "Araw" : "Day"}</p>
+              <span className="text-[9px] text-gray-500">{isTagalog ? "Awtomatikong Sinuri" : "Cap Auto-Checked"}</span>
             </div>
           </div>
 
@@ -568,7 +570,7 @@ export const SubstitutionDispatcherModal = ({
         {/* Modal Footer */}
         <div className="p-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between">
           <div className="text-xs text-slate-500">
-            {orphanedSlots.length} class {orphanedSlots.length === 1 ? "load" : "loads"} mapped • Workload compliant
+            {orphanedSlots.length} {isTagalog ? "mga klaseng itinalaga • Sumusunod sa batas" : "class loads mapped • Workload compliant"}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -577,7 +579,7 @@ export const SubstitutionDispatcherModal = ({
               disabled={isSubmitting}
               className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition cursor-pointer"
             >
-              Cancel
+              {t.common.cancel}
             </button>
             <button
               type="button"
@@ -586,7 +588,7 @@ export const SubstitutionDispatcherModal = ({
               className="px-5 py-2.5 bg-[#A91079] hover:bg-[#8F0B66] text-white rounded-xl text-xs font-bold shadow-md hover:shadow-[#A91079]/20 transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <Sparkles className="w-4 h-4" />
-              <span>{isSubmitting ? "Dispatching..." : `Commit & Dispatch (${orphanedSlots.length} Slots)`}</span>
+              <span>{isSubmitting ? t.tier2.reassigning : `${t.tier2.confirmReassign} (${orphanedSlots.length})`}</span>
             </button>
           </div>
         </div>

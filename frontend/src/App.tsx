@@ -44,8 +44,10 @@ import { SavedSchedulesModal } from "./components/SavedSchedulesModal";
 import { SlotContextMenu } from "./components/SlotContextMenu";
 import { UnassignConfirmModal } from "./components/UnassignConfirmModal";
 import { getAllRoomConflicts, type ScheduleSlot } from "./utils/scheduleConflictChecker";
+import { useLanguage } from "./context/LanguageContext";
 
 export default function App() {
+  const { t, language, setLanguage, isTagalog } = useLanguage();
   // Authentication State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
     const saved = localStorage.getItem("schedmaster_user");
@@ -762,29 +764,29 @@ export default function App() {
                 <span className="font-bold text-[#2E0249] text-sm sm:text-base tracking-tight">
                   {activeView === "PROFILE"
                     ? inspectedTeacherId
-                      ? `${teachers.find((t) => t.id === inspectedTeacherId)?.name || "Faculty"} • Profile & Classes`
+                      ? `${teachers.find((t) => t.id === inspectedTeacherId)?.name || (isTagalog ? "Guro" : "Faculty")} • ${isTagalog ? "Talaan at mga Klase" : "Profile & Classes"}`
                       : currentUser.role === "PRINCIPAL"
-                      ? "Principal Administration Profile"
-                      : `${currentUser.department_name} Department Head Profile`
+                      ? (isTagalog ? "Talaan ng Pangasiwaan ng Punong-Guro" : "Principal Administration Profile")
+                      : `${currentUser.department_name} • ${isTagalog ? "Talaan ng Puno ng Kagawaran" : "Department Head Profile"}`
                     : activeView === "SECTIONS"
-                    ? "Section Management Hub"
+                    ? (isTagalog ? "Pamamahala ng mga Pangkat" : "Section Management Hub")
                     : activeView === "GENERATE_MASTER"
-                    ? "Schedule Generator"
+                    ? t.nav.generateMaster
                     : activeView === "CLASS_GRID"
-                    ? "Class Program Timetable (SF-7)"
+                    ? (isTagalog ? "Talaorasan ng Programa ng Klase (SF-7)" : "Class Program Timetable (SF-7)")
                     : activeView === "TEACHER_GRID"
-                    ? "Teacher Program Timetable"
+                    ? (isTagalog ? "Talaorasan ng Guro" : "Teacher Program Timetable")
                     : activeView === "MASTER_GRID"
-                    ? "School Master Grid"
+                    ? (isTagalog ? "Pangkalahatang Talaorasan ng Paaralan" : "School Master Grid")
                     : activeView === "FACULTY_LOAD"
-                    ? "Faculty Workload & Directory Hub"
+                    ? t.nav.facultyWorkload
                     : activeView === "DEPT_DASHBOARD"
-                    ? `${currentUser.department_name} Department Dashboard`
+                    ? `${currentUser.department_name} • ${isTagalog ? "Kagawaran ng Pagtuturo" : "Department Dashboard"}`
                     : activeView === "DEPT_GRID"
-                    ? `${currentUser.department_name} Classes Timetable`
+                    ? `${currentUser.department_name} • ${isTagalog ? "Talaorasan ng mga Klase" : "Classes Timetable"}`
                     : currentUser.role === "PRINCIPAL"
-                    ? "Principal Master Schedule"
-                    : `${currentUser.department_name} Department Portal`}
+                    ? (isTagalog ? "Pangkalahatang Talaorasan ng Punong-Guro" : "Principal Master Schedule")
+                    : `${currentUser.department_name} ${isTagalog ? "Lagusan ng Kagawaran" : "Department Portal"}`}
                 </span>
                 {currentUser.role !== "PRINCIPAL" && (
                   <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-[#F3E5F2] text-[#A91079] border border-[#E5CCE3]">
@@ -795,26 +797,26 @@ export default function App() {
             </div>
           </div>
 
-          {/* Clean Top Action Bar: Save Files, Sign Out */}
+          {/* Clean Top Action Bar: Save Files, Language Switcher, Sign Out */}
           <div className="flex items-center gap-2">
             {/* Save Current Schedule Snapshot */}
             <button
               onClick={() => setSaveModalOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FDF2FA] hover:bg-[#F9E2F4] text-[#A91079] border border-[#E5CCE3] rounded-lg text-xs font-semibold shadow-2xs transition cursor-pointer"
-              title="Save current timetable as a named snapshot version"
+              title={isTagalog ? "I-save ang kasalukuyang talaorasan bilang snapshot" : "Save current timetable as a named snapshot version"}
             >
               <Save className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Save Snapshot</span>
+              <span className="hidden md:inline">{isTagalog ? "I-save ang Snapshot" : "Save Snapshot"}</span>
             </button>
 
             {/* Saved Schedule Versions Manager */}
             <button
               onClick={() => setSavedListModalOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-[#F3E5F2] text-[#2E0249] border border-[#E5CCE3] rounded-lg text-xs font-semibold shadow-2xs transition cursor-pointer"
-              title="Browse, restore, export, and manage saved schedule versions"
+              title={isTagalog ? "Tingnan, ibalik, at pamahalaan ang mga naka-save na bersyon" : "Browse, restore, export, and manage saved schedule versions"}
             >
               <History className="w-3.5 h-3.5 text-slate-500" />
-              <span className="hidden md:inline">Saved Versions</span>
+              <span className="hidden md:inline">{isTagalog ? "Mga Bersyon" : "Saved Versions"}</span>
               {savedSchedulesCount > 0 && (
                 <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-[#A91079] text-white">
                   {savedSchedulesCount}
@@ -822,11 +824,39 @@ export default function App() {
               )}
             </button>
 
+            {/* Bilingual Language Switcher Toggle */}
+            <div className="flex items-center bg-[#F3E5F2] p-0.5 rounded-lg border border-[#E5CCE3]">
+              <button
+                onClick={() => setLanguage("fil")}
+                className={`px-2 py-1 rounded text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                  language === "fil"
+                    ? "bg-[#A91079] text-white shadow-xs"
+                    : "text-[#570A57] hover:text-[#2E0249]"
+                }`}
+                title="Pumili ng Wikang Filipino (Strictly Tagalog)"
+              >
+                <span>🇵🇭</span>
+                <span className="hidden sm:inline">Filipino</span>
+              </button>
+              <button
+                onClick={() => setLanguage("en")}
+                className={`px-2 py-1 rounded text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                  language === "en"
+                    ? "bg-[#A91079] text-white shadow-xs"
+                    : "text-[#570A57] hover:text-[#2E0249]"
+                }`}
+                title="Switch to English"
+              >
+                <span>🇺🇸</span>
+                <span className="hidden sm:inline">English</span>
+              </button>
+            </div>
+
             {/* Quick Sign Out / Switch Dept */}
             <button
               onClick={handleLogout}
               className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer border border-transparent hover:border-red-200"
-              title="Sign Out / Switch Department"
+              title={isTagalog ? "Lumabas sa Sistema" : "Sign Out / Switch Department"}
             >
               <LogOut className="w-4 h-4" />
             </button>

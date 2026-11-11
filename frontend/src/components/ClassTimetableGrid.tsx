@@ -27,6 +27,7 @@ import {
   evaluateSlotConflict,
   getSectionConflictStats
 } from "../utils/scheduleConflictChecker";
+import { useLanguage } from "../context/LanguageContext";
 
 interface ScheduleSlot {
   id: number;
@@ -90,6 +91,7 @@ export const ClassTimetableGrid = ({
   onAddTeacher,
   onChangeAdviser,
 }: Props) => {
+  const { t, isTagalog } = useLanguage();
   // Search and filter states
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [sectionSearchQuery, setSectionSearchQuery] = useState("");
@@ -685,20 +687,20 @@ export const ClassTimetableGrid = ({
               type="button"
               onClick={() => setIsExportDocxModalOpen(true)}
               className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 hover:text-[#A91079] rounded-xl text-xs font-bold transition shadow-2xs flex items-center gap-1.5 cursor-pointer"
-              title="Export official editable Word document with customizable breaks and DepEd signatures"
+              title={t.exportDocx.title}
             >
               <FileDown className="w-3.5 h-3.5 text-[#A91079]" />
-              <span>Export Word (.docx)</span>
+              <span>{isExportingDocx ? t.common.exporting : t.common.exportWord}</span>
             </button>
             <button
               type="button"
               onClick={handleExportSF7}
               disabled={isExportingSF7}
               className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold transition shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              title="Export official DepEd School Form 7 (School Personnel Assignment List and Basic Profile)"
+              title={t.common.exportSF7}
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>{isExportingSF7 ? "Exporting SF-7..." : "Export SF-7 (.xlsx)"}</span>
+              <span>{isExportingSF7 ? (isTagalog ? "Ipinoproseso..." : "Exporting SF-7...") : t.common.exportSF7}</span>
             </button>
             <button
               type="button"
@@ -706,7 +708,7 @@ export const ClassTimetableGrid = ({
               className="px-4 py-2 bg-[#A91079] hover:bg-[#8F0B66] text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print Schedule</span>
+              <span>{t.common.printSchedule}</span>
             </button>
           </div>
         </div>
@@ -717,14 +719,14 @@ export const ClassTimetableGrid = ({
             <thead>
               <tr className="bg-slate-100/90 text-black font-extrabold border-b-2 border-black text-xs sm:text-sm">
                 <th className="p-2.5 sm:p-3 border-r-2 border-black w-28 uppercase tracking-wider text-center">
-                  TIME
+                  {t.grid.time}
                 </th>
-                {DAYS.map((day) => (
+                {[t.days.monday, t.days.tuesday, t.days.wednesday, t.days.thursday, t.days.friday].map((dayName, idx) => (
                   <th
-                    key={day}
+                    key={idx}
                     className="p-2.5 sm:p-3 border-r-2 border-black last:border-r-0 uppercase tracking-wider min-w-[150px] text-center"
                   >
-                    {day}
+                    {dayName}
                   </th>
                 ))}
               </tr>
@@ -733,6 +735,17 @@ export const ClassTimetableGrid = ({
               {periodRows.map((row) => {
                 // Fixed row spanning all days: Flag Ceremony, Break Time, Lunch Break
                 if (row.type === "FIXED_ALL") {
+                  const upperLabel = (row.label || "").toUpperCase();
+                  const localizedLabel = !isTagalog
+                    ? row.label
+                    : upperLabel.includes("FLAG")
+                    ? t.breaks.flagCeremony
+                    : upperLabel.includes("RECESS") || upperLabel.includes("BREAK") || upperLabel.includes("MERYENDA")
+                    ? t.breaks.morningBreak
+                    : upperLabel.includes("LUNCH") || upperLabel.includes("TANGHALIAN")
+                    ? t.breaks.lunchBreak
+                    : row.label;
+
                   return (
                     <tr
                       key={row.time}
@@ -747,7 +760,7 @@ export const ClassTimetableGrid = ({
                           key={day}
                           className="p-2 border-r-2 border-black last:border-r-0 text-center font-extrabold uppercase text-[11px] sm:text-xs tracking-wide"
                         >
-                          {row.label}
+                          {localizedLabel}
                         </td>
                       ))}
                     </tr>

@@ -10,6 +10,7 @@ import {
   UserCheck
 } from "lucide-react";
 import type { UserProfile } from "../api/client";
+import { useLanguage } from "../context/LanguageContext";
 
 interface Department {
   id: number;
@@ -42,6 +43,7 @@ export const Sidebar = ({
   collapsed = false,
   onToggleCollapse,
 }: Props) => {
+  const { t, language, setLanguage, isTagalog } = useLanguage();
   const isPrincipal = currentUser.role === "PRINCIPAL";
 
   const initials =
@@ -164,7 +166,7 @@ export const Sidebar = ({
         <div>
           {!collapsed ? (
             <div className="text-xs font-semibold text-[#D5B4DE] px-3 mb-1.5">
-              Timetables & Matrices
+              {isTagalog ? "Mga Talaorasan at Gabay" : "Timetables & Matrices"}
             </div>
           ) : (
             <div className="border-t border-[#570A57] my-1.5 mx-2" />
@@ -182,10 +184,10 @@ export const Sidebar = ({
                     ? "bg-[#A91079] text-white shadow-md border-l-4 border-[#F806CC]"
                     : "text-[#E2C7E5] hover:text-white hover:bg-[#570A57]/60"
                 }`}
-                title="Department Dashboard Overview"
+                title={t.nav.departmentDashboard}
               >
                 <Building2 className="w-4 h-4 shrink-0 text-[#F806CC]" />
-                {!collapsed && <span className="truncate">Dept Dashboard</span>}
+                {!collapsed && <span className="truncate">{t.nav.departmentDashboard}</span>}
               </button>
             )}
 
@@ -214,10 +216,10 @@ export const Sidebar = ({
                   ? "bg-[#A91079] text-white shadow-md border-l-4 border-[#F806CC]"
                   : "text-[#E2C7E5] hover:text-white hover:bg-[#570A57]/60"
               }`}
-              title="Timetable Schedules (Class, Teacher & School Master)"
+              title={isTagalog ? "Mga Talaorasan (Pangkat, Guro, at Paaralan)" : "Timetable Schedules (Class, Teacher & School Master)"}
             >
               <Calendar className="w-4 h-4 shrink-0 text-[#F806CC]" />
-              {!collapsed && <span className="truncate">Timetable Schedules</span>}
+              {!collapsed && <span className="truncate">{isTagalog ? "Mga Talaorasan" : "Timetable Schedules"}</span>}
             </button>
           </nav>
         </div>
@@ -226,7 +228,7 @@ export const Sidebar = ({
         <div>
           {!collapsed ? (
             <div className="text-xs font-semibold text-[#D5B4DE] px-3 mb-1.5">
-              Academic Structure
+              {isTagalog ? "Kayariang Pang-akademiko" : "Academic Structure"}
             </div>
           ) : (
             <div className="border-t border-[#570A57] my-1.5 mx-2" />
@@ -242,11 +244,11 @@ export const Sidebar = ({
                   ? "bg-[#A91079] text-white shadow-md border-l-4 border-[#F806CC]"
                   : "text-[#E2C7E5] hover:text-white hover:bg-[#570A57]/60"
               }`}
-              title="Section Management"
+              title={t.nav.sectionManager}
             >
               <GraduationCap className="w-4 h-4 shrink-0 text-[#F806CC]" />
               {!collapsed && (
-                <span className="truncate">Section Management</span>
+                <span className="truncate">{t.nav.sectionManager}</span>
               )}
             </button>
           </nav>
@@ -256,7 +258,7 @@ export const Sidebar = ({
         <div>
           {!collapsed ? (
             <div className="text-xs font-semibold text-[#D5B4DE] px-3 mb-1.5">
-              Faculty & Magna Carta
+              {isTagalog ? "Kaguruan at Magna Carta" : "Faculty & Magna Carta"}
             </div>
           ) : (
             <div className="border-t border-[#570A57] my-1.5 mx-2" />
@@ -273,15 +275,15 @@ export const Sidebar = ({
                   ? "bg-[#A91079] text-white shadow-md border-l-4 border-[#F806CC]"
                   : "text-[#E2C7E5] hover:text-white hover:bg-[#570A57]/60"
               }`}
-              title="Faculty Workload & Directory Hub"
+              title={t.nav.facultyWorkload}
             >
               <Users className="w-4 h-4 shrink-0 text-[#F806CC]" />
               {!collapsed && (
                 <div className="flex items-center justify-between flex-1 min-w-0">
-                  <span className="truncate">Faculty Workload</span>
+                  <span className="truncate">{t.nav.facultyWorkload}</span>
                   {!isPrincipal && (
                     <span className="text-[10px] bg-[#570A57] text-emerald-300 px-1.5 py-0.5 rounded font-medium border border-[#A91079]/40">
-                      Dept
+                      {isTagalog ? "Kagawaran" : "Dept"}
                     </span>
                   )}
                 </div>
@@ -298,12 +300,12 @@ export const Sidebar = ({
                   ? "bg-[#A91079] text-white shadow-md border-l-4 border-[#F806CC]"
                   : "text-[#E2C7E5] hover:text-white hover:bg-[#570A57]/60"
               }`}
-              title={isPrincipal ? "School Head Profile & Summary" : "Department Head Profile & Schedule"}
+              title={isPrincipal ? (isTagalog ? "Tala ng Punong-Guro" : "School Head Profile & Summary") : (isTagalog ? "Aking Tala at mga Klase" : "Department Head Profile & Schedule")}
             >
               <UserCheck className="w-4 h-4 shrink-0 text-[#F806CC]" />
               {!collapsed && (
                 <span className="truncate">
-                  {isPrincipal ? "Principal Profile" : "My Profile & Classes"}
+                  {isPrincipal ? (isTagalog ? "Tala ng Punong-Guro" : "Principal Profile") : (isTagalog ? "Aking Tala at mga Klase" : "My Profile & Classes")}
                 </span>
               )}
             </button>
@@ -314,7 +316,7 @@ export const Sidebar = ({
         <div>
           {!collapsed ? (
             <div className="text-xs font-semibold text-[#D5B4DE] px-3 mb-1.5">
-              Optimization & Tools
+              {isTagalog ? "Pag-optimize at Kagamitan" : "Optimization & Tools"}
             </div>
           ) : (
             <div className="border-t border-[#570A57] my-1.5 mx-2" />
@@ -331,28 +333,64 @@ export const Sidebar = ({
                   ? "bg-[#A91079] text-white shadow-md border-l-4 border-[#F806CC]"
                   : "text-[#E2C7E5] hover:text-white hover:bg-[#570A57]/60"
               }`}
-              title="Schedule Generator"
+              title={t.nav.generateMaster}
             >
               <Cpu className="w-4 h-4 shrink-0 text-[#F806CC]" />
               {!collapsed && (
-                <span className="truncate">Schedule Generator</span>
+                <span className="truncate">{t.nav.generateMaster}</span>
               )}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Sidebar Footer: Sign Out */}
-      <div className="p-3 border-t border-[#570A57] bg-[#220137]">
+      {/* Sidebar Footer: Language Switcher & Sign Out */}
+      <div className="p-3 border-t border-[#570A57] bg-[#220137] space-y-2">
+        {/* Bilingual Switcher in Sidebar */}
+        {collapsed ? (
+          <button
+            onClick={() => setLanguage(language === "fil" ? "en" : "fil")}
+            className="w-full py-2 flex items-center justify-center rounded-xl bg-[#3D055E] hover:bg-[#570A57] text-white text-xs font-bold transition cursor-pointer border border-[#570A57]"
+            title={language === "fil" ? "Lumipat sa Ingles (Switch to English)" : "Lumipat sa Wikang Filipino / Tagalog"}
+          >
+            {language === "fil" ? "🇵🇭" : "🇺🇸"}
+          </button>
+        ) : (
+          <div className="flex items-center justify-between p-1 bg-[#1A002C] rounded-xl border border-[#570A57]">
+            <button
+              onClick={() => setLanguage("fil")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                language === "fil"
+                  ? "bg-[#A91079] text-white shadow-xs"
+                  : "text-[#D5B4DE] hover:text-white hover:bg-[#3D055E]"
+              }`}
+            >
+              <span>🇵🇭</span>
+              <span>Filipino</span>
+            </button>
+            <button
+              onClick={() => setLanguage("en")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                language === "en"
+                  ? "bg-[#A91079] text-white shadow-xs"
+                  : "text-[#D5B4DE] hover:text-white hover:bg-[#3D055E]"
+              }`}
+            >
+              <span>🇺🇸</span>
+              <span>English</span>
+            </button>
+          </div>
+        )}
+
         <button
           onClick={onLogout}
           className={`w-full flex items-center ${
             collapsed ? "justify-center py-2.5 px-0" : "justify-center gap-2 px-3 py-2"
           } text-rose-300 hover:text-white hover:bg-rose-950/40 rounded-xl text-xs font-bold transition cursor-pointer border border-rose-900/30`}
-          title="Sign Out / Switch Dept"
+          title={isTagalog ? "Lumabas sa Sistema" : "Sign Out / Switch Dept"}
         >
           <LogOut className="w-4 h-4 shrink-0" />
-          {!collapsed && <span>Sign Out / Switch Dept</span>}
+          {!collapsed && <span>{isTagalog ? "Lumabas sa Sistema" : "Sign Out / Switch Dept"}</span>}
         </button>
       </div>
     </aside>

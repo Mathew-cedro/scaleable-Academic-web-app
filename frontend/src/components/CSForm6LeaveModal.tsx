@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Clock,
   Printer,
-  ChevronRight,
   ShieldCheck,
 } from "lucide-react";
 import {
@@ -16,6 +15,7 @@ import {
   type LeaveApplicationCreate,
   type LeaveApplicationRecord,
 } from "../api/client";
+import { useLanguage } from "../context/LanguageContext";
 
 interface Teacher {
   id: number;
@@ -57,6 +57,7 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
   selectedTeacher,
   onLeaveFiled,
 }) => {
+  const { t, isTagalog } = useLanguage();
   const [activeTeacherId, setActiveTeacherId] = useState<number | "">(
     selectedTeacher ? selectedTeacher.id : teachers[0]?.id || ""
   );
@@ -184,14 +185,14 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
             <div>
               <div className="flex items-center space-x-2">
                 <span className="text-xs uppercase tracking-wider font-semibold bg-pink-500/30 text-pink-200 px-2 py-0.5 rounded">
-                  Civil Service Commission Form No. 6
+                  {t.csForm6.badge}
                 </span>
                 <span className="text-xs bg-purple-700/60 text-purple-200 px-2 py-0.5 rounded">
                   DepEd Order No. 005, s. 2024
                 </span>
               </div>
               <h2 className="text-lg font-bold tracking-tight">
-                {completedRecord ? "Official CS Form 6 Endorsement Slip" : "Application for Leave & Emergency Substitution"}
+                {completedRecord ? (isTagalog ? "Opisyal na Slip ng Pag-endorso sa CS Form 6" : "Official CS Form 6 Endorsement Slip") : t.csForm6.title}
               </h2>
             </div>
           </div>
@@ -220,7 +221,7 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-                    1. Faculty Applicant (School Personnel)
+                    {t.csForm6.applicantTeacher}
                   </label>
                   <select
                     value={activeTeacherId}
@@ -235,18 +236,18 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                   </select>
                   {currentTeacherObj && (
                     <p className="mt-1 text-xs text-gray-500">
-                      Current Weekly Instructional Load:{" "}
+                      {isTagalog ? "Kasalukuyang Lingguhang Oras ng Pagtuturo: " : "Current Weekly Instructional Load: "}
                       <span className="font-semibold text-purple-800">
-                        {currentTeacherObj.current_load_hours} hours / week
+                        {currentTeacherObj.current_load_hours} {isTagalog ? "oras / linggo" : "hours / week"}
                       </span>{" "}
-                      {currentTeacherObj.is_adviser ? "• Class Adviser" : ""}
+                      {currentTeacherObj.is_adviser ? (isTagalog ? "• Gurong Tagapayo" : "• Class Adviser") : ""}
                     </p>
                   )}
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-                    2. Type of Leave (CSC Omnibus Rules, Rule XVI)
+                    {t.csForm6.leaveType}
                   </label>
                   <select
                     value={leaveType}
@@ -260,7 +261,7 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                     ))}
                   </select>
                   <p className="mt-1 text-xs text-gray-500">
-                    Mandatory official classification under Civil Service Commission regulations.
+                    {isTagalog ? "Opisyal na klasipikasyon alinsunod sa mga panuntunan ng Komisyon sa Serbisyo Sibil." : "Mandatory official classification under Civil Service Commission regulations."}
                   </p>
                 </div>
               </div>
@@ -270,7 +271,7 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                 <div>
                   <label className="block text-xs font-semibold text-purple-900 mb-1 flex items-center space-x-1">
                     <Calendar className="w-3.5 h-3.5 text-purple-600" />
-                    <span>Inclusive Date (Start)</span>
+                    <span>{t.csForm6.startDate}</span>
                   </label>
                   <input
                     type="date"
@@ -284,7 +285,7 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                 <div>
                   <label className="block text-xs font-semibold text-purple-900 mb-1 flex items-center space-x-1">
                     <Calendar className="w-3.5 h-3.5 text-purple-600" />
-                    <span>Inclusive Date (End)</span>
+                    <span>{t.csForm6.endDate}</span>
                   </label>
                   <input
                     type="date"
@@ -296,7 +297,7 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                 </div>
 
                 <div className="flex flex-col justify-center">
-                  <label className="text-xs font-semibold text-purple-900 mb-2">Commutation Option</label>
+                  <label className="text-xs font-semibold text-purple-900 mb-2">{t.csForm6.commutation}</label>
                   <label className="flex items-center space-x-2 text-xs text-gray-700 cursor-pointer">
                     <input
                       type="checkbox"
@@ -304,7 +305,7 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                       onChange={(e) => setCommutation(e.target.checked)}
                       className="rounded text-[#A91079] focus:ring-[#A91079] w-4 h-4"
                     />
-                    <span>Request Commutation of Leave</span>
+                    <span>{t.csForm6.commutationLabel}</span>
                   </label>
                 </div>
               </div>
@@ -312,13 +313,13 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
               {/* Reason / Medical Details */}
               <div>
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                  3. Details of Leave / Medical Diagnosis / Justification
+                  {t.csForm6.reason}
                 </label>
                 <textarea
                   rows={2}
                   value={reasonDetails}
                   onChange={(e) => setReasonDetails(e.target.value)}
-                  placeholder="Specify illness/hospitalization, personal family circumstance, or DO 002 wellness justification..."
+                  placeholder={isTagalog ? "Tukuyin ang dahilan, sakit/ospital, personal na sitwasyon ng pamilya, o pagpapatunay sa wellness..." : "Specify illness/hospitalization, personal family circumstance, or DO 002 wellness justification..."}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#A91079] focus:border-transparent outline-none"
                 />
               </div>
@@ -329,12 +330,12 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                   <div className="flex items-center space-x-2">
                     <Clock className="w-4 h-4 text-purple-800" />
                     <span className="text-xs font-bold uppercase tracking-wider text-purple-900">
-                      Tier 2 Dynamic MPP Timetable Impact Analysis
+                      {t.csForm6.impactAnalysis}
                     </span>
                   </div>
                   {previewData && (
                     <span className="text-xs font-semibold bg-purple-200/80 text-purple-900 px-2.5 py-0.5 rounded-full">
-                      {previewData.impacted_slots_count} Scheduled Classes Affected ({previewData.impacted_hours} Hours)
+                      {previewData.impacted_slots_count} {t.csForm6.affectedSlots} ({previewData.impacted_hours} {isTagalog ? "Oras" : "Hours"})
                     </span>
                   )}
                 </div>
@@ -343,22 +344,24 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                   {loadingPreview ? (
                     <div className="py-6 text-center text-sm text-gray-500">
                       <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-purple-700 border-t-transparent mr-2"></div>
-                      Scanning master timetable for active classes...
+                      {isTagalog ? "Sinusuri ang talaorasan para sa mga apektadong klase..." : "Scanning master timetable for active classes..."}
                     </div>
                   ) : previewData && previewData.slots.length > 0 ? (
                     <div>
                       <p className="text-xs text-gray-600 mb-2">
-                        The following scheduled classes for <strong>{previewData.teacher_name}</strong> will be temporarily orphaned and require dynamic substitution:
+                        {isTagalog
+                          ? <>Ang mga sumusunod na klase ni <strong>{previewData.teacher_name}</strong> ay pansamantalang maulila at nangangailangan ng gurong panghalili:</>
+                          : <>The following scheduled classes for <strong>{previewData.teacher_name}</strong> will be temporarily orphaned and require dynamic substitution:</>}
                       </p>
                       <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg text-xs">
                         <table className="min-w-full divide-y divide-gray-200">
                           <thead className="bg-gray-50 text-gray-700 sticky top-0">
                             <tr>
-                              <th className="px-3 py-1.5 text-left font-semibold">Day</th>
-                              <th className="px-3 py-1.5 text-left font-semibold">Period / Time</th>
-                              <th className="px-3 py-1.5 text-left font-semibold">Section</th>
-                              <th className="px-3 py-1.5 text-left font-semibold">Subject</th>
-                              <th className="px-3 py-1.5 text-left font-semibold">Room</th>
+                              <th className="px-3 py-1.5 text-left font-semibold">{t.grid.time} / Araw</th>
+                              <th className="px-3 py-1.5 text-left font-semibold">{isTagalog ? "Yugto / Oras" : "Period / Time"}</th>
+                              <th className="px-3 py-1.5 text-left font-semibold">{t.grid.section}</th>
+                              <th className="px-3 py-1.5 text-left font-semibold">{t.grid.subject}</th>
+                              <th className="px-3 py-1.5 text-left font-semibold">{t.grid.room}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100 bg-white">
@@ -377,7 +380,7 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                     </div>
                   ) : (
                     <div className="text-xs text-gray-500 py-2 italic text-center">
-                      No active classes found for this faculty member on selected dates.
+                      {isTagalog ? "Walang aktibong klase para sa gurong ito sa mga napiling petsa." : "No active classes found for this faculty member on selected dates."}
                     </div>
                   )}
 
@@ -386,7 +389,7 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-[#A91079] uppercase tracking-wider flex items-center space-x-1.5">
                         <ShieldCheck className="w-4 h-4" />
-                        <span>DepEd Order No. 005, s. 2024 Substitution Policy</span>
+                        <span>{t.csForm6.recommendedSubs}</span>
                       </span>
                     </div>
 
@@ -401,10 +404,10 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                         />
                         <div>
                           <p className="text-xs font-bold text-gray-800">
-                            Automatic Tier 2 MPP Underload Prioritization (Recommended)
+                            {t.csForm6.autoDispatch}
                           </p>
                           <p className="text-xs text-gray-500">
-                            Dynamically allocates orphaned classes to colleagues with lowest teaching loads (&lt; 30h) within the {currentTeacherObj?.department_id ? "Science" : "Department"} department.
+                            {t.csForm6.autoDispatchDesc}
                           </p>
                         </div>
                       </label>
@@ -419,7 +422,7 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                         />
                         <div className="flex-1">
                           <p className="text-xs font-bold text-gray-800">
-                            Manual Designated Substitute
+                            {t.csForm6.manualSubstitute}
                           </p>
                           {!autoDispatch && previewData && (
                             <select
@@ -428,7 +431,7 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                               className="mt-1.5 w-full px-3 py-1.5 text-xs border border-pink-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-[#A91079]"
                             >
                               {previewData.recommended_substitutes.length === 0 ? (
-                                <option value="">No department substitutes available</option>
+                                <option value="">{isTagalog ? "Walang gurong panghalili na libre" : "No department substitutes available"}</option>
                               ) : (
                                 previewData.recommended_substitutes.map((cand) => (
                                   <option key={cand.teacher_id} value={cand.teacher_id}>
@@ -452,7 +455,7 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                   onClick={onClose}
                   className="px-4 py-2 text-xs font-semibold text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-colors"
                 >
-                  Cancel
+                  {t.common.cancel}
                 </button>
                 <button
                   type="submit"
@@ -462,12 +465,12 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                   {submitting ? (
                     <>
                       <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Filing & Dispatching Substitutes...</span>
+                      <span>{t.csForm6.filing}</span>
                     </>
                   ) : (
                     <>
-                      <span>Submit Application & Dispatch Tier 2 MPP</span>
-                      <ChevronRight className="w-4 h-4" />
+                      <FileText className="w-4 h-4" />
+                      <span>{t.csForm6.fileButton}</span>
                     </>
                   )}
                 </button>
@@ -604,7 +607,7 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                   onClick={() => setCompletedRecord(null)}
                   className="px-4 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-50 rounded-xl transition-colors"
                 >
-                  ← File Another Leave
+                  {isTagalog ? "← Maghain ng panibagong pagliban" : "← File Another Leave"}
                 </button>
                 <div className="flex items-center space-x-3">
                   <button
@@ -613,14 +616,14 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                     className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-xl transition-colors flex items-center space-x-2"
                   >
                     <Printer className="w-4 h-4 text-gray-600" />
-                    <span>Print Endorsement Slip</span>
+                    <span>{t.csForm6.printSlip}</span>
                   </button>
                   <button
                     type="button"
                     onClick={onClose}
                     className="px-6 py-2 bg-[#2E0249] hover:bg-[#570A57] text-white text-xs font-bold rounded-xl shadow-md transition-all"
                   >
-                    Done
+                    {t.common.close}
                   </button>
                 </div>
               </div>

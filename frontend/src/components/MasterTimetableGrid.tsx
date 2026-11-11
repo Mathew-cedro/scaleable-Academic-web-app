@@ -14,6 +14,7 @@ import { api } from "../api/client";
 import { evaluateSlotConflict } from "../utils/scheduleConflictChecker";
 
 import { getPeriodHeaders } from "../utils/bellSchedule";
+import { useLanguage } from "../context/LanguageContext";
 
 export interface ScheduleSlot {
   id: number;
@@ -58,8 +59,6 @@ interface Props {
   onEmptySlotClick?: (sectionId: number, dayOfWeek: number, periodIndex: number) => void;
 }
 
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-
 export const MasterTimetableGrid = ({
   slots,
   sections,
@@ -70,6 +69,7 @@ export const MasterTimetableGrid = ({
   onSlotContextMenu,
   onEmptySlotClick,
 }: Props) => {
+  const { t, isTagalog } = useLanguage();
   const hasExtendedSlots = useMemo(() => {
     return (allSlots || slots).some((s) => s.period_index >= 8);
   }, [allSlots, slots]);
@@ -233,11 +233,11 @@ export const MasterTimetableGrid = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {/* Day Tabs */}
           <div className="flex items-center gap-1 overflow-x-auto no-scrollbar p-1 bg-[#F3E5F2] rounded-2xl">
-            {DAYS.map((day, idx) => {
+            {[t.days.monday, t.days.tuesday, t.days.wednesday, t.days.thursday, t.days.friday].map((dayName, idx) => {
               const isSelected = selectedDay === idx;
               return (
                 <button
-                  key={day}
+                  key={idx}
                   type="button"
                   onClick={() => setSelectedDay(idx)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
@@ -246,7 +246,7 @@ export const MasterTimetableGrid = ({
                       : "text-[#703372] hover:text-[#2E0249] hover:bg-[#E5CCE3]"
                   }`}
                 >
-                  <span>{day}</span>
+                  <span>{dayName}</span>
                 </button>
               );
             })}
@@ -259,7 +259,7 @@ export const MasterTimetableGrid = ({
                   : "text-[#703372] hover:text-[#2E0249] hover:bg-[#E5CCE3]"
               }`}
             >
-              All 5 Days
+              {t.days.allDays}
             </button>
           </div>
 
@@ -270,7 +270,7 @@ export const MasterTimetableGrid = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Filter section, subject, teacher..."
+              placeholder={isTagalog ? "Salain ang pangkat, asignatura, guro..." : "Filter section, subject, teacher..."}
               className="pl-8 pr-7 py-1.5 bg-[#FAF5FA] hover:bg-[#F3E5F2] focus:bg-white border border-[#E5CCE3] focus:border-[#A91079] rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-hidden transition w-56 sm:w-64"
             />
             {searchQuery && (
@@ -298,7 +298,7 @@ export const MasterTimetableGrid = ({
                   : "bg-[#F3E5F2] text-[#703372] hover:bg-[#E5CCE3]"
               }`}
             >
-              All Grades ({sections.length})
+              {isTagalog ? "Lahat ng Baitang" : "All Grades"} ({sections.length})
             </button>
             {gradeLevels.map((lvl) => {
               const count = sections.filter((s) => s.grade_level === lvl).length;
@@ -313,7 +313,7 @@ export const MasterTimetableGrid = ({
                       : "bg-[#F3E5F2] text-[#703372] hover:bg-[#E5CCE3]"
                   }`}
                 >
-                  Grade {lvl} ({count})
+                  {isTagalog ? "Baitang" : "Grade"} {lvl} ({count})
                 </button>
               );
             })}
@@ -396,18 +396,18 @@ export const MasterTimetableGrid = ({
           <div>
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
               <Calendar className="w-4 h-4 text-[#A91079]" />
-              <span>School Master Timetable Matrix</span>
+              <span>{isTagalog ? "Pangkalahatang Talaorasan ng Paaralan" : "School Master Timetable Matrix"}</span>
             </h3>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              Key Stage 3 • Synchronized section schedules & room allocations
+              {isTagalog ? "Mababang Mataas na Paaralan • Sabayang iskedyul ng mga pangkat at silid-aralan" : "Key Stage 3 • Synchronized section schedules & room allocations"}
               {conflictFilter !== "ALL" && (
                 <span className="ml-2 font-bold text-[#A91079]">
                   (Filtered: {filteredSections.length} sections matching{" "}
                   {conflictFilter === "ROOM_CLASH"
-                    ? "Room Clashes"
+                    ? (isTagalog ? "Salungatan sa Silid" : "Room Clashes")
                     : conflictFilter === "TEACHER_CLASH"
-                    ? "Teacher Clashes"
-                    : "Conflicts"}
+                    ? (isTagalog ? "Salungatan sa Guro" : "Teacher Clashes")
+                    : (isTagalog ? "Mga Salungatan" : "Conflicts")}
                   )
                 </span>
               )}
@@ -415,12 +415,12 @@ export const MasterTimetableGrid = ({
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold px-2.5 py-1 rounded-xl bg-[#FDF2FA] text-[#A91079] border border-[#E5CCE3]">
-              {filteredSections.length} Sections
+              {filteredSections.length} {isTagalog ? "Pangkat" : "Sections"}
             </span>
             {totalMasterIssues === 0 ? (
               <span className="text-xs font-bold px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Conflict-Free</span>
+                <span>{t.grid.zeroClashes}</span>
               </span>
             ) : (
               <div className="flex items-center gap-1.5">
@@ -434,7 +434,7 @@ export const MasterTimetableGrid = ({
                     title="Click to filter sections with room clashes"
                   >
                     <Building className="w-3.5 h-3.5 text-purple-600" />
-                    <span>{totalConflictMetrics.roomClashes} Room Clashes</span>
+                    <span>{totalConflictMetrics.roomClashes} {t.grid.roomClashes}</span>
                   </button>
                 )}
                 <button
@@ -446,7 +446,7 @@ export const MasterTimetableGrid = ({
                   title="Click to filter all clashing sections"
                 >
                   <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
-                  <span>{totalMasterIssues} Total Issues</span>
+                  <span>{totalMasterIssues} {t.grid.totalIssues}</span>
                 </button>
               </div>
             )}
@@ -456,7 +456,7 @@ export const MasterTimetableGrid = ({
               className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold shadow-2xs flex items-center gap-1.5 transition cursor-pointer no-print ml-1"
             >
               <Printer className="w-3.5 h-3.5 text-slate-500" />
-              <span>Print</span>
+              <span>{t.common.print}</span>
             </button>
           </div>
         </div>
@@ -470,11 +470,10 @@ export const MasterTimetableGrid = ({
                 <div className="sticky top-0 z-20 bg-[#F3E5F2]/95 backdrop-blur-xs text-[#2E0249] px-5 py-2.5 border-b border-slate-200 flex items-center justify-between text-xs font-bold">
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-[#A91079]" />
-                    <span className="font-extrabold uppercase tracking-wide text-slate-900">{DAYS[d]} Schedule</span>
-
+                    <span className="font-extrabold uppercase tracking-wide text-slate-900">{[t.days.monday, t.days.tuesday, t.days.wednesday, t.days.thursday, t.days.friday][d]}</span>
                   </div>
                   <span className="text-[11px] text-slate-500 font-medium">
-                    7 Periods • 2 Breaks
+                    {isTagalog ? "7 Yugto • 2 Pahinga" : "7 Periods • 2 Breaks"}
                   </span>
                 </div>
               )}
@@ -484,7 +483,7 @@ export const MasterTimetableGrid = ({
                 <thead>
                   <tr className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200">
                     <th className="p-3 w-56 min-w-[220px] max-w-[220px] text-left border-r border-slate-200 sticky left-0 z-20 bg-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">
-                      Section / Room
+                      {t.grid.section} / {t.grid.room}
                     </th>
                     {periodHeaders.slice(0, 2).map((p) => (
                       <th key={p.index} className="p-2.5 text-center border-r border-slate-200 min-w-[150px]">
@@ -494,8 +493,8 @@ export const MasterTimetableGrid = ({
                     ))}
                     {/* Health Break */}
                     <th className="p-2 text-center bg-emerald-50/80 border-r border-slate-200 w-20 text-[10px] text-emerald-800 font-bold">
-                      Health Break
-                      <div className="text-[9px] text-emerald-600 font-normal">{periodHeaders[1]?.time ? "Morning Recess" : "9:00 – 9:20"}</div>
+                      {t.breaks.morningBreak}
+                      <div className="text-[9px] text-emerald-600 font-normal">{periodHeaders[1]?.time ? (isTagalog ? "Meryenda sa Umaga" : "Morning Recess") : "9:00 – 9:20"}</div>
                     </th>
                     {periodHeaders.slice(2, 4).map((p) => (
                       <th key={p.index} className="p-2.5 text-center border-r border-slate-200 min-w-[150px]">
@@ -505,8 +504,8 @@ export const MasterTimetableGrid = ({
                     ))}
                     {/* Lunch Break */}
                     <th className="p-2 text-center bg-amber-50/80 border-r border-slate-200 w-20 text-[10px] text-amber-800 font-bold">
-                      Lunch Break
-                      <div className="text-[9px] text-amber-600 font-normal">{periodHeaders[3]?.time ? "Midday Break" : "11:20 – 12:00"}</div>
+                      {t.breaks.lunchBreak}
+                      <div className="text-[9px] text-amber-600 font-normal">{periodHeaders[3]?.time ? (isTagalog ? "Tanghalian" : "Midday Break") : "11:20 – 12:00"}</div>
                     </th>
                     {periodHeaders.slice(4).map((p) => (
                       <th key={p.index} className="p-2.5 text-center border-r border-slate-200 min-w-[150px] last:border-r-0">

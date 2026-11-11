@@ -30,6 +30,7 @@ import {
   type ScheduleDeploymentRecord,
 } from "../api/client";
 import { getPeriodHeaders } from "../utils/bellSchedule";
+import { useLanguage } from "../context/LanguageContext";
 
 interface Teacher {
   id: number;
@@ -102,6 +103,7 @@ export const DepartmentDashboard = ({
   onConfirmReassign,
   durationMinutes = 60,
 }: Props) => {
+  const { t, isTagalog } = useLanguage();
   const [dispatcherTeacher, setDispatcherTeacher] = useState<Teacher | null>(null);
   const [latestDeployment, setLatestDeployment] = useState<ScheduleDeploymentRecord | null>(null);
   const [showScheduleMatrix, setShowScheduleMatrix] = useState(false);
@@ -374,26 +376,26 @@ export const DepartmentDashboard = ({
         {/* Total Roster */}
         <div className="p-4 rounded-2xl border bg-white text-slate-800 border-[#E5CCE3] shadow-2xs">
           <div className="flex items-center justify-between text-xs font-bold mb-1">
-            <span className="text-slate-500">Department Faculty</span>
+            <span className="text-slate-500">{t.department.totalFaculty}</span>
             <Users className="w-4 h-4 text-[#A91079]" />
           </div>
           <div className="text-2xl font-black text-slate-900">{deptTeachers.length}</div>
           <div className="text-[10px] mt-1 text-slate-500">
-            {activeCount} Active • {deptTeachers.length - activeCount} Unavailable
+            {activeCount} {t.common.active} • {deptTeachers.length - activeCount} {isTagalog ? "Hindi Libre" : "Unavailable"}
           </div>
         </div>
 
         {/* Teaching Volume */}
         <div className="p-4 rounded-2xl border bg-[#FDF2FA] text-slate-800 border-[#E5CCE3] shadow-2xs">
           <div className="flex items-center justify-between text-xs font-bold mb-1">
-            <span className="text-[#703372]">Weekly Teaching Volume</span>
+            <span className="text-[#703372]">{t.department.totalHours}</span>
             <BookOpen className="w-4 h-4 text-[#A91079]" />
           </div>
           <div className="text-2xl font-black text-[#2E0249]">
-            {totalDepartmentHours} <span className="text-sm font-semibold text-[#A91079]">hrs/week</span>
+            {totalDepartmentHours} <span className="text-sm font-semibold text-[#A91079]">{isTagalog ? "oras/linggo" : "hrs/week"}</span>
           </div>
           <div className="text-[10px] mt-1 text-[#A91079]">
-            Avg {deptTeachers.length > 0 ? (totalDepartmentHours / deptTeachers.length).toFixed(1) : 0} hrs / instructor
+            {isTagalog ? "Karaniwan" : "Avg"} {deptTeachers.length > 0 ? (totalDepartmentHours / deptTeachers.length).toFixed(1) : 0} {isTagalog ? "oras / guro" : "hrs / instructor"}
           </div>
         </div>
 
@@ -407,7 +409,7 @@ export const DepartmentDashboard = ({
         >
           <div className="flex items-center justify-between text-xs font-bold mb-1">
             <span className={onLeaveCount === 0 ? "text-emerald-800" : "text-red-800"}>
-              On Leave / Unavailable
+              {t.department.onLeaveFaculty}
             </span>
             {onLeaveCount === 0 ? (
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -419,19 +421,19 @@ export const DepartmentDashboard = ({
             {onLeaveCount}
           </div>
           <div className={`text-[10px] mt-1 ${onLeaveCount === 0 ? "text-emerald-700" : "text-red-700"}`}>
-            {onLeaveCount === 0 ? "Full Attendance" : "Substitute reallocation needed"}
+            {onLeaveCount === 0 ? (isTagalog ? "Kumpletong Pumasok" : "Full Attendance") : (isTagalog ? "Kailangan ng gurong panghalili" : "Substitute reallocation needed")}
           </div>
         </div>
 
         {/* Advisory Assignments */}
         <div className="p-4 rounded-2xl border bg-white text-slate-800 border-[#E5CCE3] shadow-2xs">
           <div className="flex items-center justify-between text-xs font-bold mb-1">
-            <span className="text-slate-500">Designated Advisers</span>
+            <span className="text-slate-500">{isTagalog ? "Mga Gurong Tagapayo" : "Designated Advisers"}</span>
             <GraduationCap className="w-4 h-4 text-slate-400" />
           </div>
           <div className="text-2xl font-black text-slate-900">{adviserCount}</div>
           <div className="text-[10px] mt-1 text-slate-500">
-            Assigned to Key Stage 3 Sections
+            {isTagalog ? "Itinalaga sa mga Baitang 7-10" : "Assigned to Key Stage 3 Sections"}
           </div>
         </div>
       </div>
@@ -473,10 +475,10 @@ export const DepartmentDashboard = ({
           <div>
             <h3 className="text-xs font-bold text-slate-900 flex items-center gap-2">
               <Users className="w-4 h-4 text-[#A91079]" />
-              <span>Department Faculty Roster & Workload Status</span>
+              <span>{t.department.rosterTitle}</span>
             </h3>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              Standard 6 hrs/day daily teaching limit and substitute priority
+              {t.department.rosterSubtitle}
             </p>
           </div>
 
@@ -487,20 +489,20 @@ export const DepartmentDashboard = ({
                 setIsLeaveModalOpen(true);
               }}
               className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
-              title="File official Civil Service Form 6 Application for Leave & Trigger Tier 2 MPP Substitution"
+              title={t.csForm6.title}
             >
               <FileText className="w-3.5 h-3.5 text-[#A91079]" />
-              <span>File CS Form 6 Leave</span>
+              <span>{t.department.fileLeave}</span>
             </button>
 
             <button
               onClick={handleExportSF7}
               disabled={isExportingSF7}
               className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs disabled:opacity-50"
-              title="Export official DepEd School Form 7 (School Personnel Assignment List & Basic Profile)"
+              title={t.common.exportSF7}
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>{isExportingSF7 ? "Exporting..." : "Export SF-7 (.xlsx)"}</span>
+              <span>{isExportingSF7 ? (isTagalog ? "Ipinoproseso..." : "Exporting...") : t.department.exportSF7Btn}</span>
             </button>
 
             {onAddTeacher && (
@@ -509,7 +511,7 @@ export const DepartmentDashboard = ({
                 className="px-3 py-1.5 bg-[#A91079] hover:bg-[#8F0B66] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
               >
                 <UserPlus className="w-3.5 h-3.5" />
-                <span>Add Member</span>
+                <span>{t.department.addMember}</span>
               </button>
             )}
           </div>
@@ -519,19 +521,19 @@ export const DepartmentDashboard = ({
           <table className="w-full text-xs text-left">
             <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500 border-b border-[#E5CCE3]">
               <tr>
-                <th className="p-3">Faculty Member</th>
-                <th className="p-3">Position / Rank</th>
-                <th className="p-3">Class Advisory Role</th>
-                <th className="p-3">Weekly Teaching Load</th>
-                <th className="p-3">Availability Status</th>
-                <th className="p-3 text-right">Actions</th>
+                <th className="p-3">{t.department.facultyName}</th>
+                <th className="p-3">{t.department.positionRank}</th>
+                <th className="p-3">{t.department.advisoryRole}</th>
+                <th className="p-3">{t.department.weeklyLoad}</th>
+                <th className="p-3">{t.department.availability}</th>
+                <th className="p-3 text-right">{t.common.actions}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {deptTeachers.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-6 text-center text-xs text-slate-400">
-                    No faculty members currently registered in this department. Click "Add Member" to create one.
+                    {isTagalog ? "Walang kaguruang nakatala sa kagawarang ito. Pindutin ang \"Magdagdag ng Guro\"." : "No faculty members currently registered in this department. Click \"Add Member\" to create one."}
                   </td>
                 </tr>
               ) : (
