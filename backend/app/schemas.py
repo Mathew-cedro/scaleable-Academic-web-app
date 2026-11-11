@@ -311,4 +311,73 @@ class ScheduleDeployResponse(BaseModel):
     department_summaries: List[DepartmentDeploySummary]
 
 
+class CSForm6PreviewSlot(BaseModel):
+    slot_id: int
+    day_of_week: int
+    day_name: str
+    period_index: int
+    time_window: str
+    section_id: int
+    section_name: str
+    subject_id: int
+    subject_name: str
+    room_number: str
+
+
+class CSForm6RecommendedSub(BaseModel):
+    teacher_id: int
+    teacher_name: str
+    position: str
+    department_name: str
+    current_load_hours: int
+    max_weekly_hours: int
+    rank_score: int
+    is_available: bool
+    reason: str
+
+
+class CSForm6PreviewResponse(BaseModel):
+    teacher_id: int
+    teacher_name: str
+    position: str
+    department_id: int
+    department_name: str
+    start_date: str
+    end_date: str
+    impacted_slots_count: int
+    impacted_hours: float
+    slots: List[CSForm6PreviewSlot]
+    recommended_substitutes: List[CSForm6RecommendedSub]
+
+
+class LeaveApplicationCreate(BaseModel):
+    teacher_id: int
+    leave_type: str = "Sick Leave (Sec. 43, Rule XVI)"
+    start_date: str  # YYYY-MM-DD
+    end_date: str    # YYYY-MM-DD
+    number_of_days: float = 1.0
+    reason_details: Optional[str] = None
+    commutation_requested: bool = False
+    auto_dispatch_substitutes: bool = True
+    manual_substitute_id: Optional[int] = None
+
+
+class LeaveApplicationRead(BaseModel):
+    id: int
+    control_number: str
+    teacher_id: int
+    teacher_name: Optional[str] = None
+    leave_type: str
+    start_date: str
+    end_date: str
+    number_of_days: float
+    reason_details: Optional[str] = None
+    commutation_requested: bool
+    status: str
+    impacted_slots_count: int
+    substitute_summary: Optional[str] = None
+    created_at: datetime
+
+
+
 

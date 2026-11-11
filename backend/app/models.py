@@ -134,3 +134,40 @@ class ScheduleDeployment(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class LeaveType(str, Enum):
+    """
+    Civil Service Commission (CSC) & DepEd Official Leave Types.
+    CSC Memorandum Circular No. 41, s. 1998 as amended by CSC MC No. 001, s. 2020.
+    """
+    VACATION = "Vacation Leave (Sec. 51, Rule XVI)"
+    MANDATORY = "Mandatory / Forced Leave (Sec. 25, Rule XVI)"
+    SICK = "Sick Leave (Sec. 43, Rule XVI)"
+    MATERNITY = "Maternity Leave (RA 11210)"
+    PATERNITY = "Paternity Leave (RA 8187)"
+    SPECIAL_PRIVILEGE = "Special Privilege Leave (DO 84, s. 2007)"
+    SOLO_PARENT = "Solo Parent Leave (RA 8972 / RA 11861)"
+    CALAMITY = "Emergency / Calamity Leave (CSC MC No. 2, s. 2012)"
+    WELLNESS = "Faculty Wellness Leave (DO 002, s. 2026)"
+
+
+class LeaveApplication(SQLModel, table=True):
+    """
+    Civil Service Form No. 6 (CS Form 6 - Revised 2020) Application for Leave.
+    Tracks teacher leave filing, affected schedule slots, Tier 2 MPP substitutions, and administrative endorsements.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    control_number: str = Field(index=True, unique=True)  # e.g., "CS6-2026-0042"
+    teacher_id: int = Field(foreign_key="teacher.id", index=True)
+    leave_type: str = Field(default="Sick Leave (Sec. 43, Rule XVI)")
+    start_date: str = Field(description="ISO Date YYYY-MM-DD")
+    end_date: str = Field(description="ISO Date YYYY-MM-DD")
+    number_of_days: float = Field(default=1.0)
+    reason_details: Optional[str] = Field(default=None)
+    commutation_requested: bool = Field(default=False)
+    status: str = Field(default="APPROVED")  # "PENDING", "APPROVED", "SUBSTITUTED"
+    impacted_slots_count: int = Field(default=0)
+    substitute_summary: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+

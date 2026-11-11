@@ -7,8 +7,10 @@ import {
   AlertTriangle,
   Plus,
   ShieldCheck,
-  Printer
+  Printer,
+  FileSpreadsheet,
 } from "lucide-react";
+import { api } from "../api/client";
 import { evaluateSlotConflict } from "../utils/scheduleConflictChecker";
 
 import { getPeriodHeaders } from "../utils/bellSchedule";
@@ -85,6 +87,26 @@ export const MasterTimetableGrid = ({
   const [gradeFilter, setGradeFilter] = useState<number | "ALL">("ALL");
   const [conflictFilter, setConflictFilter] = useState<"ALL" | "ANY_CONFLICT" | "ROOM_CLASH" | "TEACHER_CLASH">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  const [isExportingSF7, setIsExportingSF7] = useState(false);
+
+  const handleExportSF7 = async () => {
+    setIsExportingSF7(true);
+    try {
+      const blob = await api.exportSF7Excel();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "SF7_PGCHS_School_Personnel_Assignment_2026-2027.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      alert("Failed to export DepEd SF-7: " + (err.message || "Unknown error"));
+    } finally {
+      setIsExportingSF7(false);
+    }
+  };
 
   // Grade levels available
   const gradeLevels = useMemo(() => {
@@ -186,6 +208,28 @@ export const MasterTimetableGrid = ({
     <div className="space-y-5">
       {/* Search & Day Filter Control Bar */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3 no-print">
+        {/* Architectural Tier 1 Header & Official DepEd SF-7 Exporter */}
+        <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-purple-900 text-purple-100 shadow-2xs">
+              Tier 1: Global Constraint Timetable Matrix
+            </span>
+            <span className="text-[11px] font-semibold text-slate-500">
+              OR-Tools CP-SAT v9.11 • Zero Clashes Guaranteed • RA 4670 Enforced
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleExportSF7}
+            disabled={isExportingSF7}
+            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold shadow-2xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+            title="Export official DepEd School Form 7 (School Personnel Assignment List & Basic Profile)"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            <span>{isExportingSF7 ? "Exporting SF-7..." : "Export SF-7 (.xlsx)"}</span>
+          </button>
+        </div>
+
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {/* Day Tabs */}
           <div className="flex items-center gap-1 overflow-x-auto no-scrollbar p-1 bg-[#F3E5F2] rounded-2xl">

@@ -268,14 +268,17 @@ export const SubstitutionDispatcherModal = ({
               <Zap className="w-5 h-5" />
             </span>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-black text-slate-900 tracking-tight">
-                  Class Load Prioritization & Substitution Dispatcher
-                </h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-purple-900 text-purple-100 tracking-wider">
+                  Tier 2: Minimal Perturbation Rescheduler (MPP)
+                </span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
                   {orphanedSlots.length} Orphaned Slots
                 </span>
               </div>
+              <h3 className="text-base font-black text-slate-900 tracking-tight mt-0.5">
+                Class Load Prioritization & Substitution Dispatcher
+              </h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 Substitute coverage for <strong className="text-slate-800">{absentTeacher.name}</strong> (
                 {absentTeacher.position}) • {deptObj?.name || "Department"}
@@ -298,6 +301,32 @@ export const SubstitutionDispatcherModal = ({
               <span>{errorMsg}</span>
             </div>
           )}
+
+          {/* Mathematical Disruption Metric Scorecard (Thesis Equation Sync) */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-gradient-to-r from-purple-50 via-pink-50/50 to-purple-50 p-3.5 rounded-2xl border border-purple-200/80">
+            <div className="text-center p-2 bg-white/80 rounded-xl border border-purple-100 shadow-2xs">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700">Disruption Cost (&Delta;)</span>
+              <p className="text-base font-black text-purple-950 mt-0.5">{orphanedSlots.length} Slots</p>
+              <span className="text-[9px] text-gray-500">Minimization Target</span>
+            </div>
+            <div className="text-center p-2 bg-white/80 rounded-xl border border-purple-100 shadow-2xs">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Stability Index</span>
+              <p className="text-base font-black text-emerald-800 mt-0.5">
+                {(((slots.length - orphanedSlots.length) / Math.max(slots.length, 1)) * 100).toFixed(1)}%
+              </p>
+              <span className="text-[9px] text-gray-500">Timetable Preserved</span>
+            </div>
+            <div className="text-center p-2 bg-white/80 rounded-xl border border-purple-100 shadow-2xs">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#A91079]">DO 005, s. 2024</span>
+              <p className="text-base font-black text-[#A91079] mt-0.5">Underload Priority</p>
+              <span className="text-[9px] text-gray-500">&lt; 30 hrs/wk Preferred</span>
+            </div>
+            <div className="text-center p-2 bg-white/80 rounded-xl border border-purple-100 shadow-2xs">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">RA 4670 Safety</span>
+              <p className="text-base font-black text-indigo-900 mt-0.5">&le; 6h / Day</p>
+              <span className="text-[9px] text-gray-500">Cap Auto-Checked</span>
+            </div>
+          </div>
 
           {/* Teacher Status Alert */}
           <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">

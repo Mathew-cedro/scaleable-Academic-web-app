@@ -169,6 +169,74 @@ export interface ScheduleDeployResponse {
   department_summaries: DepartmentDeploySummary[];
 }
 
+export interface CSForm6PreviewSlot {
+  slot_id: number;
+  day_of_week: number;
+  day_name: string;
+  period_index: number;
+  time_window: string;
+  section_id: number;
+  section_name: string;
+  subject_id: number;
+  subject_name: string;
+  room_number: string;
+}
+
+export interface CSForm6RecommendedSub {
+  teacher_id: number;
+  teacher_name: string;
+  position: string;
+  department_name: string;
+  current_load_hours: number;
+  max_weekly_hours: number;
+  rank_score: number;
+  is_available: boolean;
+  reason: string;
+}
+
+export interface CSForm6PreviewResponse {
+  teacher_id: number;
+  teacher_name: string;
+  position: string;
+  department_id: number;
+  department_name: string;
+  start_date: string;
+  end_date: string;
+  impacted_slots_count: number;
+  impacted_hours: number;
+  slots: CSForm6PreviewSlot[];
+  recommended_substitutes: CSForm6RecommendedSub[];
+}
+
+export interface LeaveApplicationCreate {
+  teacher_id: number;
+  leave_type: string;
+  start_date: string;
+  end_date: string;
+  number_of_days?: number;
+  reason_details?: string;
+  commutation_requested?: boolean;
+  auto_dispatch_substitutes?: boolean;
+  manual_substitute_id?: number | null;
+}
+
+export interface LeaveApplicationRecord {
+  id: number;
+  control_number: string;
+  teacher_id: number;
+  teacher_name?: string;
+  leave_type: string;
+  start_date: string;
+  end_date: string;
+  number_of_days: number;
+  reason_details?: string | null;
+  commutation_requested: boolean;
+  status: string;
+  impacted_slots_count: number;
+  substitute_summary?: string | null;
+  created_at: string;
+}
+
 export function formatErrorDetail(detail: any, fallback: string = "Request failed"): string {
   if (!detail) return fallback;
   if (typeof detail === "string") return detail;
@@ -797,4 +865,53 @@ export const api = {
     }
     return res.json();
   },
+
+  async exportSF7Excel(): Promise<Blob> {
+    const res = await fetch(`${API_BASE}/schedule/export/sf7`);
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, "Failed to export DepEd SF-7"));
+    }
+    return res.blob();
+  },
+
+  async getCSForm6Preview(
+    teacherId: number,
+    startDate: string,
+    endDate: string
+  ): Promise<CSForm6PreviewResponse> {
+    const res = await fetch(
+      `${API_BASE}/schedule/leave-filing/preview/${teacherId}?start_date=${encodeURIComponent(
+        startDate
+      )}&end_date=${encodeURIComponent(endDate)}`
+    );
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, "Failed to preview leave impact"));
+    }
+    return res.json();
+  },
+
+  async fileCSForm6Leave(
+    payload: LeaveApplicationCreate
+  ): Promise<LeaveApplicationRecord> {
+    const res = await fetch(`${API_BASE}/schedule/leave-filing`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, "Failed to submit CS Form 6 application"));
+    }
+    return res.json();
+  },
+
+  async getLeaveApplications(): Promise<LeaveApplicationRecord[]> {
+    const res = await fetch(`${API_BASE}/schedule/leave-applications`);
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, "Failed to fetch leave applications"));
+    }
+    return res.json();
+  },
 };
+
+export const apiClient = api;
+

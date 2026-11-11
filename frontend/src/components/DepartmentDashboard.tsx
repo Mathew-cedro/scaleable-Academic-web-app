@@ -17,8 +17,11 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  FileText,
+  FileSpreadsheet,
 } from "lucide-react";
 import { SubstitutionDispatcherModal } from "./SubstitutionDispatcherModal";
+import { CSForm6LeaveModal } from "./CSForm6LeaveModal";
 import { PrincipalAIReportsCard } from "./PrincipalAIReportsCard";
 import {
   api,
@@ -103,6 +106,28 @@ export const DepartmentDashboard = ({
   const [latestDeployment, setLatestDeployment] = useState<ScheduleDeploymentRecord | null>(null);
   const [showScheduleMatrix, setShowScheduleMatrix] = useState(false);
   const [isAIReportModalOpen, setIsAIReportModalOpen] = useState(false);
+  const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
+  const [leaveSelectedTeacher, setLeaveSelectedTeacher] = useState<Teacher | null>(null);
+  const [isExportingSF7, setIsExportingSF7] = useState(false);
+
+  const handleExportSF7 = async () => {
+    setIsExportingSF7(true);
+    try {
+      const blob = await api.exportSF7Excel();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "SF7_PGCHS_School_Personnel_Assignment_2026-2027.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      alert("Failed to export DepEd SF-7: " + (err.message || "Unknown error"));
+    } finally {
+      setIsExportingSF7(false);
+    }
+  };
 
   useEffect(() => {
     api.getLatestDeployment().then(setLatestDeployment).catch(() => {});
@@ -455,15 +480,39 @@ export const DepartmentDashboard = ({
             </p>
           </div>
 
-          {onAddTeacher && (
+          <div className="flex items-center gap-2 flex-wrap">
             <button
-              onClick={() => onAddTeacher(activeDept.id)}
-              className="px-3 py-1.5 bg-[#A91079] hover:bg-[#8F0B66] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+              onClick={() => {
+                setLeaveSelectedTeacher(null);
+                setIsLeaveModalOpen(true);
+              }}
+              className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+              title="File official Civil Service Form 6 Application for Leave & Trigger Tier 2 MPP Substitution"
             >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span>Add Member</span>
+              <FileText className="w-3.5 h-3.5 text-[#A91079]" />
+              <span>File CS Form 6 Leave</span>
             </button>
-          )}
+
+            <button
+              onClick={handleExportSF7}
+              disabled={isExportingSF7}
+              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs disabled:opacity-50"
+              title="Export official DepEd School Form 7 (School Personnel Assignment List & Basic Profile)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{isExportingSF7 ? "Exporting..." : "Export SF-7 (.xlsx)"}</span>
+            </button>
+
+            {onAddTeacher && (
+              <button
+                onClick={() => onAddTeacher(activeDept.id)}
+                className="px-3 py-1.5 bg-[#A91079] hover:bg-[#8F0B66] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Add Member</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -602,10 +651,21 @@ export const DepartmentDashboard = ({
                           {teacher.status === "Active" ? (
                             <>
                               <button
+                                onClick={() => {
+                                  setLeaveSelectedTeacher(teacher);
+                                  setIsLeaveModalOpen(true);
+                                }}
+                                className="px-2 py-1 text-[10px] font-bold text-purple-900 bg-purple-50 hover:bg-purple-100 rounded-lg border border-purple-200 transition cursor-pointer flex items-center gap-1"
+                                title="File Civil Service Form No. 6 Application for Leave & Trigger Tier 2 MPP Substitution"
+                              >
+                                <FileText className="w-3 h-3 text-[#A91079]" />
+                                <span>CS-6 Leave</span>
+                              </button>
+                              <button
                                 onClick={() => onToggleStatus(teacher.id, "On Leave")}
                                 className="px-2 py-1 text-[10px] font-semibold text-red-700 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition cursor-pointer"
                               >
-                                Leave
+                                Quick Leave
                               </button>
                               <button
                                 onClick={() => onToggleStatus(teacher.id, "Wellness Leave")}
@@ -660,6 +720,22 @@ export const DepartmentDashboard = ({
             if (onConfirmReassign) {
               await onConfirmReassign(payload);
             }
+          }}
+        />
+      )}
+
+      {/* Civil Service Form 6 Application for Leave & Tier 2 MPP Modal */}
+      {isLeaveModalOpen && (
+        <CSForm6LeaveModal
+          isOpen={isLeaveModalOpen}
+          onClose={() => {
+            setIsLeaveModalOpen(false);
+            setLeaveSelectedTeacher(null);
+          }}
+          teachers={teachers}
+          selectedTeacher={leaveSelectedTeacher}
+          onLeaveFiled={() => {
+            window.dispatchEvent(new CustomEvent("schedmaster_sections_refresh"));
           }}
         />
       )}

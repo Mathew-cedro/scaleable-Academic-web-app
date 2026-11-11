@@ -2680,16 +2680,19 @@ export const GenerateMasterTab = ({
               <div className="bg-gradient-to-br from-[#2E0249] via-[#570A57] to-[#2E0249] rounded-3xl p-6 text-white shadow-xl space-y-5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-[#F806CC] text-[10px] font-black uppercase tracking-wider border border-white/20">
-                        Automated Master Timetable
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2.5 py-0.5 rounded-full bg-white/15 text-[#F806CC] text-[10px] font-black uppercase tracking-wider border border-white/20 shadow-xs">
+                        Tier 1: Global Constraint Engine (OR-Tools CP-SAT v9.11)
+                      </span>
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-400/30">
+                        DepEd DO 009, s. 2026 & RA 4670 Enforced
                       </span>
                     </div>
                     <h3 className="text-lg font-black text-white tracking-tight">
-                      Generate Master Timetable
+                      Tier 1 Master Timetable Generator
                     </h3>
                     <p className="text-xs text-pink-100/90 max-w-xl">
-                      Generates conflict-free faculty schedules for all {selectedGenerationSectionIds.size} selected sections.
+                      Autonomous global constraint satisfaction for all {selectedGenerationSectionIds.size} selected sections with zero double-booking and RA 4670 6-hour daily ceiling enforcement.
                     </p>
                   </div>
 

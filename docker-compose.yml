@@ -1,0 +1,51 @@
+services:
+  # Relational Database: PostgreSQL 16 (Local-First On-Premise)
+  db:
+    image: postgres:16-alpine
+    container_name: pgchs_sched_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sched_admin
+      POSTGRES_PASSWORD: pgchs_secure_password_2026
+      POSTGRES_DB: scheduler_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sched_admin -d scheduler_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Microservice & OR-Tools CP-SAT Solver
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pgchs_sched_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://sched_admin:pgchs_secure_password_2026@db:5432/scheduler_db
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "8000:8000"
+
+  # Frontend: React Vite + Tailwind CSS served via Nginx Reverse Proxy
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pgchs_sched_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  pgdata:
+    driver: local

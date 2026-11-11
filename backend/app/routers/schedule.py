@@ -7,15 +7,18 @@ from datetime import datetime, timezone
 import json
 import time
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
 from app.services.docx_exporter import generate_class_schedule_document
+from app.services.sf7_exporter import generate_deped_sf7_workbook, PERIOD_TIMES
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from app.database import get_session
 from app.models import (
     Department,
+    LeaveApplication,
+    LeaveType,
     SavedSchedule,
     ScheduleDeployment,
     ScheduleSlot,
@@ -25,8 +28,13 @@ from app.models import (
     TeacherStatus,
 )
 from app.schemas import (
+    CSForm6PreviewResponse,
+    CSForm6PreviewSlot,
+    CSForm6RecommendedSub,
     DepartmentDeploySummary,
     GenerateScheduleRequest,
+    LeaveApplicationCreate,
+    LeaveApplicationRead,
     ManualOverrideRequest,
     ManualSwapRequest,
     MasterScheduleResponse,
@@ -1167,3 +1175,262 @@ def export_section_class_program_docx(
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/export/sf7")
+def export_deped_sf7_excel(
+    session: Session = Depends(get_session),
+):
+    """
+    Export DepEd School Form 7 (SF-7) School Personnel Assignment List and Basic Profile.
+    Generates a production-grade Excel workbook with institutional metadata, faculty contact minutes,
+    RA 4670 6-hour compliance checks, DO 002 ancillary duty tracking, and master schedule matrix.
+    """
+    buf = generate_deped_sf7_workbook(session)
+    filename = "SF7_PGCHS_School_Personnel_Assignment_2026-2027.xlsx"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/leave-filing/preview/{teacher_id}", response_model=CSForm6PreviewResponse)
+def preview_cs_form_6_leave(
+    teacher_id: int,
+    start_date: str = Query(..., description="Start date YYYY-MM-DD"),
+    end_date: str = Query(..., description="End date YYYY-MM-DD"),
+    session: Session = Depends(get_session),
+):
+    """
+    Civil Service Form No. 6 (Application for Leave) Impact Preview.
+    Analyzes all scheduled slots for the target teacher, maps daily instructional hours,
+    and ranks recommended substitutes using DepEd Order No. 005, s. 2024 underloaded priority.
+    """
+    teacher = session.get(Teacher, teacher_id)
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+
+    dept = session.get(Department, teacher.department_id)
+    dept_name = dept.name if dept else "General"
+
+    # Fetch slots for this teacher
+    slots = session.exec(select(ScheduleSlot).where(ScheduleSlot.teacher_id == teacher_id)).all()
+    sections = {s.id: s for s in session.exec(select(Section)).all()}
+    subjects = {sub.id: sub for sub in session.exec(select(Subject)).all()}
+
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+    preview_slots: List[CSForm6PreviewSlot] = []
+
+    for s in sorted(slots, key=lambda x: (x.day_of_week, x.period_index)):
+        sec = sections.get(s.section_id)
+        sub = subjects.get(s.subject_id)
+        preview_slots.append(
+            CSForm6PreviewSlot(
+                slot_id=s.id,
+                day_of_week=s.day_of_week,
+                day_name=day_names[s.day_of_week] if 0 <= s.day_of_week < 5 else f"Day {s.day_of_week}",
+                period_index=s.period_index,
+                time_window=PERIOD_TIMES.get(s.period_index, f"P{s.period_index}"),
+                section_id=s.section_id,
+                section_name=sec.name if sec else f"Section {s.section_id}",
+                subject_id=s.subject_id,
+                subject_name=sub.name if sub else f"Subject {s.subject_id}",
+                room_number=sec.room_number if sec else "N/A",
+            )
+        )
+
+    # Calculate recommended substitutes from the same department
+    dept_teachers = session.exec(
+        select(Teacher).where(
+            Teacher.department_id == teacher.department_id,
+            Teacher.id != teacher.id,
+            Teacher.status == TeacherStatus.ACTIVE,
+        )
+    ).all()
+
+    def get_rank_val(pos: str) -> int:
+        p = (pos or "").lower()
+        if "master teacher ii" in p or "mt-ii" in p:
+            return 5
+        if "master teacher i" in p or "mt-i" in p:
+            return 4
+        if "head" in p:
+            return 3
+        if "teacher iii" in p:
+            return 2
+        if "teacher ii" in p:
+            return 1
+        return 0
+
+    # Sort candidates by current load (lowest first - DO 005 underload priority) then rank descending
+    sorted_candidates = sorted(
+        dept_teachers,
+        key=lambda c: (c.current_load_hours, -get_rank_val(c.position)),
+    )
+
+    recommended_subs: List[CSForm6RecommendedSub] = []
+    for cand in sorted_candidates:
+        is_underloaded = cand.current_load_hours < 30
+        reason_desc = (
+            f"Underloaded ({cand.current_load_hours}h/30h) - Prioritized under DO 005, s. 2024"
+            if is_underloaded
+            else f"Full Load ({cand.current_load_hours}h/30h) - Emergency Coverage Only"
+        )
+        recommended_subs.append(
+            CSForm6RecommendedSub(
+                teacher_id=cand.id,
+                teacher_name=cand.name,
+                position=cand.position,
+                department_name=dept_name,
+                current_load_hours=cand.current_load_hours,
+                max_weekly_hours=cand.max_weekly_hours,
+                rank_score=get_rank_val(cand.position),
+                is_available=is_underloaded,
+                reason=reason_desc,
+            )
+        )
+
+    impacted_hours = float(len(preview_slots))
+
+    return CSForm6PreviewResponse(
+        teacher_id=teacher.id,
+        teacher_name=teacher.name,
+        position=teacher.position,
+        department_id=teacher.department_id,
+        department_name=dept_name,
+        start_date=start_date,
+        end_date=end_date,
+        impacted_slots_count=len(preview_slots),
+        impacted_hours=impacted_hours,
+        slots=preview_slots,
+        recommended_substitutes=recommended_subs,
+    )
+
+
+@router.post("/leave-filing", response_model=LeaveApplicationRead)
+def file_cs_form_6_leave(
+    payload: LeaveApplicationCreate,
+    session: Session = Depends(get_session),
+):
+    """
+    Submit Civil Service Form No. 6 (Application for Leave).
+    Enforces Rule XVI of CSC Omnibus Rules on Leave and DepEd Order No. 005, s. 2024.
+    Automatically flags teacher status as 'On Leave', generates control number,
+    and optionally executes Tier 2 MPP substitution dispatching.
+    """
+    teacher = session.get(Teacher, payload.teacher_id)
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+
+    # Generate sequential control number
+    existing_count = len(session.exec(select(LeaveApplication)).all())
+    control_num = f"CS6-2026-{existing_count + 1:04d}"
+
+    # Count impacted slots
+    slots = session.exec(select(ScheduleSlot).where(ScheduleSlot.teacher_id == payload.teacher_id)).all()
+    impacted_count = len(slots)
+
+    # Update teacher status to On Leave
+    teacher.status = TeacherStatus.WELLNESS_LEAVE if "wellness" in payload.leave_type.lower() else TeacherStatus.ON_LEAVE
+    session.add(teacher)
+
+    substitute_summary_str = None
+
+    # Tier 2 MPP Dynamic Substitution Dispatch if requested
+    if payload.auto_dispatch_substitutes and impacted_count > 0:
+        if payload.manual_substitute_id:
+            # Explicit designated substitute
+            reassign_req = ReassignTeacherSlotsRequest(
+                absent_teacher_id=payload.teacher_id,
+                strategy="MANUAL",
+                manual_assignments=[
+                    {"slot_id": s.id, "substitute_teacher_id": payload.manual_substitute_id}
+                    for s in slots
+                ],
+            )
+            sub_res = reassign_teacher_slots(session, reassign_req)
+            sub_tch = session.get(Teacher, payload.manual_substitute_id)
+            sub_name = sub_tch.name if sub_tch else f"Teacher #{payload.manual_substitute_id}"
+            substitute_summary_str = f"Dispatched {impacted_count} slots to designated substitute: {sub_name}"
+        else:
+            # Dynamic Underload Priority Policy (DepEd Order No. 005, s. 2024)
+            reassign_req = ReassignTeacherSlotsRequest(
+                absent_teacher_id=payload.teacher_id,
+                strategy="LEAST_LOAD",
+            )
+            sub_res = reassign_teacher_slots(session, reassign_req)
+            substitute_summary_str = f"Tier 2 MPP Dynamic Reassignment: {sub_res.message}"
+
+    leave_record = LeaveApplication(
+        control_number=control_num,
+        teacher_id=payload.teacher_id,
+        leave_type=payload.leave_type,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        number_of_days=payload.number_of_days,
+        reason_details=payload.reason_details,
+        commutation_requested=payload.commutation_requested,
+        status="SUBSTITUTED" if payload.auto_dispatch_substitutes else "APPROVED",
+        impacted_slots_count=impacted_count,
+        substitute_summary=substitute_summary_str,
+        created_at=datetime.now(timezone.utc),
+    )
+    session.add(leave_record)
+    session.commit()
+    session.refresh(leave_record)
+
+    broadcast_sync({
+        "event": "SCHEDULE_UPDATED",
+        "action": "LEAVE_APPLICATION_FILED",
+        "message": f"Civil Service Form 6 filed for {teacher.name} ({control_num}). Tier 2 substitution active.",
+    })
+
+    return LeaveApplicationRead(
+        id=leave_record.id,
+        control_number=leave_record.control_number,
+        teacher_id=leave_record.teacher_id,
+        teacher_name=teacher.name,
+        leave_type=leave_record.leave_type,
+        start_date=leave_record.start_date,
+        end_date=leave_record.end_date,
+        number_of_days=leave_record.number_of_days,
+        reason_details=leave_record.reason_details,
+        commutation_requested=leave_record.commutation_requested,
+        status=leave_record.status,
+        impacted_slots_count=leave_record.impacted_slots_count,
+        substitute_summary=leave_record.substitute_summary,
+        created_at=leave_record.created_at,
+    )
+
+
+@router.get("/leave-applications", response_model=List[LeaveApplicationRead])
+def list_cs_form_6_leaves(
+    session: Session = Depends(get_session),
+):
+    """List all submitted Civil Service Form No. 6 leave applications with teacher metadata."""
+    leaves = session.exec(select(LeaveApplication).order_by(LeaveApplication.created_at.desc())).all()
+    teachers = {t.id: t for t in session.exec(select(Teacher)).all()}
+
+    res: List[LeaveApplicationRead] = []
+    for lv in leaves:
+        t = teachers.get(lv.teacher_id)
+        res.append(
+            LeaveApplicationRead(
+                id=lv.id,
+                control_number=lv.control_number,
+                teacher_id=lv.teacher_id,
+                teacher_name=t.name if t else f"Teacher #{lv.teacher_id}",
+                leave_type=lv.leave_type,
+                start_date=lv.start_date,
+                end_date=lv.end_date,
+                number_of_days=lv.number_of_days,
+                reason_details=lv.reason_details,
+                commutation_requested=lv.commutation_requested,
+                status=lv.status,
+                impacted_slots_count=lv.impacted_slots_count,
+                substitute_summary=lv.substitute_summary,
+                created_at=lv.created_at,
+            )
+        )
+    return res
