@@ -130,6 +130,17 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
     e.preventDefault();
     if (!activeTeacherId) return;
 
+    if (startDate > endDate) {
+      setErrorBanner("Inclusive start date cannot be later than end date.");
+      return;
+    }
+
+    const startMs = new Date(startDate).getTime();
+    const endMs = new Date(endDate).getTime();
+    const calculatedDays = isNaN(startMs) || isNaN(endMs) 
+      ? 1.0 
+      : Math.max(1, Math.round((endMs - startMs) / (1000 * 3600 * 24)) + 1);
+
     setSubmitting(true);
     setErrorBanner(null);
 
@@ -139,7 +150,7 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
         leave_type: leaveType,
         start_date: startDate,
         end_date: endDate,
-        number_of_days: 1.0,
+        number_of_days: calculatedDays,
         reason_details: reasonDetails || undefined,
         commutation_requested: commutation,
         auto_dispatch_substitutes: autoDispatch,
@@ -416,11 +427,15 @@ export const CSForm6LeaveModal: React.FC<Props> = ({
                               onChange={(e) => setManualSubId(Number(e.target.value))}
                               className="mt-1.5 w-full px-3 py-1.5 text-xs border border-pink-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-[#A91079]"
                             >
-                              {previewData.recommended_substitutes.map((cand) => (
-                                <option key={cand.teacher_id} value={cand.teacher_id}>
-                                  {cand.teacher_name} ({cand.position}) - {cand.current_load_hours}h/wk {cand.reason}
-                                </option>
-                              ))}
+                              {previewData.recommended_substitutes.length === 0 ? (
+                                <option value="">No department substitutes available</option>
+                              ) : (
+                                previewData.recommended_substitutes.map((cand) => (
+                                  <option key={cand.teacher_id} value={cand.teacher_id}>
+                                    {cand.teacher_name} ({cand.position}) - {cand.current_load_hours}h/wk {cand.reason}
+                                  </option>
+                                ))
+                              )}
                             </select>
                           )}
                         </div>
