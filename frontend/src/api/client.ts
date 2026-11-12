@@ -613,37 +613,6 @@ export const api = {
     return res.json();
   },
 
-  async generateAIReport(
-    reportType: string = "EXECUTIVE_BRIEFING",
-    customPrompt?: string,
-    departmentId?: number | null,
-    requesterName?: string,
-    requesterTitle?: string
-  ): Promise<{ report: string; report_type: string; timestamp: string; ai_source?: string; ai_model?: string }> {
-    try {
-      const res = await fetch(`${API_BASE}/schedule/ai-report`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          report_type: reportType,
-          custom_prompt: customPrompt,
-          department_id: departmentId ?? undefined,
-          requester_name: requesterName,
-          requester_title: requesterTitle,
-        }),
-      });
-      if (!res.ok) throw new Error("Backend AI report endpoint failed");
-      return res.json();
-    } catch {
-      const fallback = await this.getComplianceReport();
-      return {
-        report: fallback.report,
-        report_type: reportType,
-        timestamp: new Date().toLocaleTimeString(),
-      };
-    }
-  },
-
   async login(
     username: string,
     password: string,

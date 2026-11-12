@@ -1,16 +1,15 @@
 """
-DepEd Workload Compliance & Schedule Repair LLM Reporter.
-Integrates with OpenRouter API (Llama 3.3 / Gemini) with an automatic
-deterministic local fallback generator for 100% offline reliability.
+DepEd Workload Compliance & Schedule Repair Statutory Reporter.
+Purely deterministic, mathematical rule-based compliance reporting engine.
+Zero external AI / LLM dependencies.
 """
 
-import os
-from typing import Dict, List, Optional
-from app.models import Section, Subject, Teacher
+from typing import List, Optional
+from app.models import Section, Teacher
 from app.schemas import DiffResult
 
 
-def generate_deterministic_report(
+def generate_compliance_report(
     teachers: List[Teacher],
     sections: List[Section],
     diff_result: Optional[DiffResult] = None,
@@ -18,8 +17,8 @@ def generate_deterministic_report(
     latency_ms: float = 0.0,
 ) -> str:
     """
-    Deterministic fallback generator: Produces an official DepEd Form 7 style
-    compliance and repair report without requiring an active internet connection.
+    Deterministic generator: Produces an official DepEd Form 7 style
+    compliance and repair report without external API or AI calls.
     """
     absent_names = [t.name for t in (absent_teachers or [])]
     absent_str = ", ".join(absent_names) if absent_names else "None (Routine Optimization)"
@@ -52,7 +51,8 @@ Specific Schedule Modifications:
 
     report = f"""================================================================================
 REPUBLIC OF THE PHILIPPINES | DEPARTMENT OF EDUCATION
-REGION V - BICOL | DIVISION OF CAMARINES SUR
+REGION V - BICOL | DIVISION OF ALBAY
+POLANGUI GENERAL COMPREHENSIVE HIGH SCHOOL (SCHOOL ID: 301986)
 JUNIOR HIGH SCHOOL ACADEMIC SCHEDULING & FACULTY WORKLOAD COMPLIANCE REPORT
 (Generated under DepEd Order No. 009, s. 2026 & DepEd Order No. 005, s. 2024)
 ================================================================================
@@ -91,81 +91,7 @@ Prepared by:
 ACADEMIC SCHEDULING COMMITTEE & OR-TOOLS OPTIMIZATION ENGINE
 
 Attested by:
-School Principal IV / Department Heads Council
+DR. MARY ANNE M. SAHAGUN • Secondary School Principal IV
 ================================================================================
 """
     return report.strip()
-
-
-async def generate_llm_compliance_report(
-    teachers: List[Teacher],
-    sections: List[Section],
-    diff_result: Optional[DiffResult] = None,
-    absent_teachers: Optional[List[Teacher]] = None,
-    latency_ms: float = 0.0,
-) -> str:
-    """
-    Generate DepEd Workload Compliance Report using OpenRouter LLM.
-    Automatically falls back to deterministic local template on failure or missing API key.
-    """
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        return generate_deterministic_report(
-            teachers=teachers,
-            sections=sections,
-            diff_result=diff_result,
-            absent_teachers=absent_teachers,
-            latency_ms=latency_ms,
-        )
-
-    try:
-        from openai import OpenAI
-
-        client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=api_key,
-        )
-
-        absent_names = [t.name for t in (absent_teachers or [])]
-        absent_str = ", ".join(absent_names) if absent_names else "None"
-
-        prompt = f"""
-You are an expert DepEd Administrative Officer in the Philippines.
-Generate an official DepEd Workload Compliance and Dynamic Schedule Repair Report (Form 7 format).
-Context:
-- Legal bases: RA 4670 (max 6 hours/day actual teaching), DepEd Order No. 009, s. 2026 (Key Stage 3 daily structure), DO 005, s. 2024 (load balancing).
-- Monday Period 1 (7:00 AM - 8:00 AM) is strictly locked for Class Adviser Homeroom Guidance.
-- Fixed non-teaching blocks: Health Break (9:00-9:20 AM), Lunch Break (11:20-12:00 PM), After-Class ARAL (2:00-3:00 PM).
-- Teachers on leave: {absent_str}
-- Solver latency: {latency_ms:.2f} ms
-- Disruption cost score: {diff_result.disruption_cost if diff_result else 0}
-- Classes moved/displaced: {diff_result.displaced_count if diff_result else 0}
-- Classes reassigned to substitutes: {diff_result.reassigned_count if diff_result else 0}
-
-Provide a professional, clean, plain-text administrative report with Roman numeral sections.
-"""
-
-        response = client.chat.completions.create(
-            model=os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct"),
-            messages=[
-                {"role": "system", "content": "You are a professional educational administration AI assistant."},
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=1000,
-            temperature=0.3,
-        )
-
-        content = response.choices[0].message.content
-        if content and len(content.strip()) > 50:
-            return content.strip()
-        return generate_deterministic_report(teachers, sections, diff_result, absent_teachers, latency_ms)
-
-    except Exception:
-        # Graceful fallback to deterministic local generator
-        return generate_deterministic_report(
-            teachers=teachers,
-            sections=sections,
-            diff_result=diff_result,
-            absent_teachers=absent_teachers,
-            latency_ms=latency_ms,
-        )

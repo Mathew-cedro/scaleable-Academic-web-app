@@ -215,7 +215,7 @@ export const ConflictResolutionModal = ({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-500">
-                  DepEd Form 7 Workload Compliance Narrative (OpenRouter AI / Deterministic Engine)
+                  DepEd Form 7 Workload Compliance Narrative (Statutory Engine)
                 </span>
                 <div className="flex items-center gap-2">
                   <button

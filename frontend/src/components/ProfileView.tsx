@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import type { UserProfile } from "../api/client";
 import { EditPrincipalModal } from "./EditPrincipalModal";
-import { PrincipalAIReportsCard } from "./PrincipalAIReportsCard";
 
 interface Department {
   id: number;
@@ -88,7 +87,6 @@ export const ProfileView = ({
   departments,
   sections,
   slots,
-  teachers,
   onEditTeacher,
   onToggleStatus,
   onUpdateCurrentUser,
@@ -139,11 +137,6 @@ export const ProfileView = ({
     (!teacher && currentUser.role === "PRINCIPAL") ||
     displayTeacher.position?.toLowerCase().includes("principal") ||
     (currentUser.role === "PRINCIPAL" && (displayTeacher.name === currentUser.name || displayTeacher.id === 0));
-
-  const isDeptHead =
-    currentUser.role === "DEPARTMENT_HEAD" ||
-    displayTeacher.position?.toLowerCase().includes("head") ||
-    (!isPrincipal && Boolean(displayTeacher.department_id || currentUser.department_id));
 
   const isUnder = !isAbsent && !isPrincipal && displayTeacher.current_load_hours < 20;
   const isOptimal =
@@ -586,30 +579,6 @@ export const ProfileView = ({
             ))}
           </div>
         </div>
-      )}
-
-      {/* AI Reports Hub: Available to School Principal & Department Heads */}
-      {(isPrincipal || isDeptHead) && (
-        <PrincipalAIReportsCard
-          departmentsCount={departments.length}
-          sectionsCount={sections.length}
-          teachersCount={
-            isDeptHead && currentDept
-              ? (teachers?.filter((t) => t.department_id === currentDept.id).length || 8)
-              : (teachers?.length || 64)
-          }
-          slotsCount={
-            isDeptHead && currentDept
-              ? (slots.filter((s) => s.department_name === currentDept.name).length || teacherSlots.length)
-              : slots.length
-          }
-          departmentId={isDeptHead ? (currentDept?.id ?? currentUser.department_id) : undefined}
-          departmentName={currentDept?.name}
-          departmentCode={currentDept?.code}
-          requesterName={displayTeacher.name}
-          requesterTitle={displayTeacher.position}
-          isDeptHead={!isPrincipal}
-        />
       )}
 
       {/* Edit Principal Profile Modal */}

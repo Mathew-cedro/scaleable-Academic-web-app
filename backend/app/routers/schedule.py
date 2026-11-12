@@ -56,8 +56,7 @@ from app.services.cp_solver import (
     reassign_teacher_slots,
     repair_schedule,
 )
-from app.services.llm_reporter import generate_llm_compliance_report
-from app.services.ai_service import generate_ai_executive_report
+from app.services.compliance_reporter import generate_compliance_report
 from app.websocket_manager import manager, broadcast_sync
 
 router = APIRouter(prefix="/api/schedule", tags=["Schedule Engine"])
@@ -626,12 +625,12 @@ def swap_slots(
 
 
 @router.get("/report")
-async def get_compliance_report(session: Session = Depends(get_session)):
-    """Fetch official DepEd Workload Compliance Report."""
+def get_compliance_report(session: Session = Depends(get_session)):
+    """Fetch official DepEd Workload Compliance Report (Deterministic Statutory Engine)."""
     teachers = session.exec(select(Teacher)).all()
     sections = session.exec(select(Section)).all()
 
-    report_text = await generate_llm_compliance_report(
+    report_text = generate_compliance_report(
         teachers=teachers,
         sections=sections,
         diff_result=None,
@@ -639,117 +638,6 @@ async def get_compliance_report(session: Session = Depends(get_session)):
         latency_ms=0.0,
     )
     return {"report": report_text}
-
-
-class AIReportRequest(BaseModel):
-    report_type: str = "EXECUTIVE_BRIEFING"  # EXECUTIVE_BRIEFING, WORKLOAD_AUDIT, RESOURCE_TRACK_ANALYSIS
-    custom_prompt: Optional[str] = None
-    department_id: Optional[int] = None
-    requester_name: Optional[str] = None
-    requester_title: Optional[str] = None
-
-
-@router.post("/ai-report")
-async def generate_executive_ai_report(
-    payload: AIReportRequest,
-    session: Session = Depends(get_session),
-):
-    """Generate executive AI Report prototype for School Principal or Department Heads."""
-    teachers = session.exec(select(Teacher)).all()
-    sections = session.exec(select(Section)).all()
-    departments = session.exec(select(Department)).all()
-    slots = session.exec(select(ScheduleSlot)).all()
-
-    now_str = datetime.now().strftime("%B %d, %Y • %I:%M %p")
-    target_dept = session.get(Department, payload.department_id) if payload.department_id else None
-
-    if target_dept:
-        scope_name = f"Department of {target_dept.name}"
-        dept_teachers = [t for t in teachers if t.department_id == target_dept.id]
-        active_dept_teachers = [t for t in dept_teachers if t.status == TeacherStatus.ACTIVE]
-        on_leave_dept_teachers = [t for t in dept_teachers if t.status != TeacherStatus.ACTIVE]
-        dept_teacher_ids = {t.id for t in dept_teachers}
-        dept_slots = [s for s in slots if s.teacher_id in dept_teacher_ids]
-        dept_advisers = [t for t in dept_teachers if t.is_adviser and t.advisory_section_id]
-        officer_name = payload.requester_name or "Department Head"
-        officer_title = payload.requester_title or f"Head Teacher / Head of {target_dept.name}"
-
-        stats = {
-            "scope": scope_name,
-            "department_code": target_dept.code,
-            "total_faculty": len(dept_teachers),
-            "active_faculty": len(active_dept_teachers),
-            "on_leave_faculty": len(on_leave_dept_teachers),
-            "total_slots": len(dept_slots),
-            "avg_load": round(sum(t.current_load_hours for t in active_dept_teachers) / max(1, len(active_dept_teachers)), 1),
-            "adviser_count": len(dept_advisers),
-            "sections_count": len(sections),
-        }
-
-        faculty_roster = []
-        for t in dept_teachers:
-            adv_sec = next((s for s in sections if s.id == t.advisory_section_id), None)
-            faculty_roster.append({
-                "id": t.id,
-                "name": t.name,
-                "position": t.position,
-                "current_load_hours": t.current_load_hours,
-                "max_daily_hours": t.max_daily_hours,
-                "is_adviser": t.is_adviser,
-                "advisory_section": adv_sec.name if adv_sec else "None",
-                "status": t.status,
-            })
-    else:
-        scope_name = "Office of the School Principal / Key Stage 3"
-        active_teachers = [t for t in teachers if t.status == TeacherStatus.ACTIVE]
-        on_leave_teachers = [t for t in teachers if t.status != TeacherStatus.ACTIVE]
-        advisers = [t for t in teachers if t.is_adviser and t.advisory_section_id]
-        officer_name = payload.requester_name or "Dr. Rolando Mariano"
-        officer_title = payload.requester_title or "Principal IV / School Head"
-
-        stats = {
-            "scope": scope_name,
-            "departments_count": len(departments),
-            "sections_count": len(sections),
-            "total_faculty": len(teachers),
-            "active_faculty": len(active_teachers),
-            "on_leave_faculty": len(on_leave_teachers),
-            "total_slots": len(slots),
-            "avg_load": round(sum(t.current_load_hours for t in active_teachers) / max(1, len(active_teachers)), 1),
-            "adviser_count": len(advisers),
-        }
-
-        faculty_roster = []
-        for t in teachers:
-            adv_sec = next((s for s in sections if s.id == t.advisory_section_id), None)
-            faculty_roster.append({
-                "id": t.id,
-                "name": t.name,
-                "position": t.position,
-                "current_load_hours": t.current_load_hours,
-                "max_daily_hours": t.max_daily_hours,
-                "is_adviser": t.is_adviser,
-                "advisory_section": adv_sec.name if adv_sec else "None",
-                "status": t.status,
-            })
-
-    ai_result = generate_ai_executive_report(
-        report_type=payload.report_type,
-        scope_name=scope_name,
-        requester_name=officer_name,
-        requester_title=officer_title,
-        stats=stats,
-        faculty_list=faculty_roster,
-        custom_prompt=payload.custom_prompt,
-    )
-
-    return {
-        "report": ai_result["report_text"],
-        "report_type": payload.report_type,
-        "timestamp": now_str,
-        "ai_source": ai_result.get("source"),
-        "ai_model": ai_result.get("model"),
-    }
 
 
 # ==============================================================================

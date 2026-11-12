@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   Compass,
 } from "lucide-react";
+import { useLanguage } from "../context/LanguageContext";
 
 interface Props {
   isGenerating: boolean;
@@ -20,6 +21,7 @@ export const GenerationCockpitModal: React.FC<Props> = ({
   sectionCount,
   periodDuration,
 }) => {
+  const { t } = useLanguage();
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
 
@@ -85,7 +87,7 @@ export const GenerationCockpitModal: React.FC<Props> = ({
             </div>
             <div>
               <h3 className="text-base font-black text-slate-900 tracking-tight">
-                AI Timetable Generation Cockpit
+                {t.tier1.cockpitTitle}
               </h3>
               <p className="text-xs text-slate-500 font-medium">
                 Solving for {sectionCount} sections • {periodDuration} mins/period

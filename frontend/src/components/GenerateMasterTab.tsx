@@ -3883,7 +3883,7 @@ export const GenerateMasterTab = ({
         </div>
       )}
 
-      {/* MODAL 11: AI Timetable Generation Progress Cockpit */}
+      {/* MODAL 11: CP-SAT Timetable Generation Progress Cockpit */}
       <GenerationCockpitModal
         isGenerating={loading}
         sectionCount={selectedGenerationSectionIds.size}

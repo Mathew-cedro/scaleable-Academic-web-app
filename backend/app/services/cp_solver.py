@@ -26,7 +26,7 @@ from app.schemas import (
     ScheduleSlotRead,
 )
 from app.services.diff_engine import compute_schedule_diff
-from app.services.llm_reporter import generate_llm_compliance_report
+from app.services.compliance_reporter import generate_compliance_report
 
 
 def get_rank_score(position: Optional[str]) -> int:
@@ -1227,19 +1227,14 @@ def repair_schedule(
     saved_slots = session.exec(select(ScheduleSlot)).all()
     hydrated_slots = hydrate_slots(saved_slots, section_map, subject_map, teacher_map, dept_map)
 
-    # Generate LLM Compliance and Repair report
-    report = generate_llm_compliance_report(
+    # Generate Statutory Workload Compliance and Repair report (Deterministic Engine)
+    report_text = generate_compliance_report(
         teachers=teachers,
         sections=sections,
         diff_result=diff_result,
         absent_teachers=absent_teachers,
         latency_ms=latency_ms,
     )
-    import asyncio
-    try:
-        report_text = asyncio.run(report) if asyncio.iscoroutine(report) else report
-    except Exception:
-        report_text = str(report)
 
     return ScheduleOperationResponse(
         success=True,

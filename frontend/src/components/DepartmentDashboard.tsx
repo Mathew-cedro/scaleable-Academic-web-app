@@ -16,13 +16,11 @@ import {
   ShieldCheck,
   ChevronDown,
   ChevronUp,
-  X,
   FileText,
   FileSpreadsheet,
 } from "lucide-react";
 import { SubstitutionDispatcherModal } from "./SubstitutionDispatcherModal";
 import { CSForm6LeaveModal } from "./CSForm6LeaveModal";
-import { PrincipalAIReportsCard } from "./PrincipalAIReportsCard";
 import {
   api,
   type ReassignTeacherSlotsRequest,
@@ -107,7 +105,6 @@ export const DepartmentDashboard = ({
   const [dispatcherTeacher, setDispatcherTeacher] = useState<Teacher | null>(null);
   const [latestDeployment, setLatestDeployment] = useState<ScheduleDeploymentRecord | null>(null);
   const [showScheduleMatrix, setShowScheduleMatrix] = useState(false);
-  const [isAIReportModalOpen, setIsAIReportModalOpen] = useState(false);
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [leaveSelectedTeacher, setLeaveSelectedTeacher] = useState<Teacher | null>(null);
   const [isExportingSF7, setIsExportingSF7] = useState(false);
@@ -192,19 +189,12 @@ export const DepartmentDashboard = ({
         {/* Action Triggers */}
         <div className="flex items-center gap-2.5 self-start md:self-auto shrink-0 flex-wrap">
           <button
-            onClick={() => setIsAIReportModalOpen(true)}
-            className="px-4 py-2.5 bg-white hover:bg-[#FAF5FA] text-[#A91079] border border-[#E5CCE3] rounded-2xl text-xs font-bold shadow-2xs flex items-center gap-2 transition cursor-pointer"
-          >
-            <Sparkles className="w-4 h-4 text-[#A91079]" />
-            <span>AI Compliance Report</span>
-          </button>
-          <button
             onClick={onExecuteRepair}
             disabled={repairLoading}
             className="px-4 py-2.5 bg-[#A91079] hover:bg-[#8F0B66] text-white rounded-2xl text-xs font-bold shadow-md shadow-[#A91079]/20 flex items-center gap-2 transition disabled:opacity-50 cursor-pointer"
           >
             <Sparkles className="w-4 h-4" />
-            <span>{repairLoading ? "Repairing Schedule..." : "Execute Dynamic Repair"}</span>
+            <span>{repairLoading ? (isTagalog ? "Inaayos ang Iskedyul..." : "Repairing Schedule...") : (isTagalog ? "Mabilisang Pagsasaayos (Dynamic Repair)" : "Execute Dynamic Repair")}</span>
           </button>
         </div>
       </div>
@@ -742,40 +732,6 @@ export const DepartmentDashboard = ({
         />
       )}
 
-      {/* Department AI Reports & Statutory Audit Modal */}
-      {isAIReportModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150">
-          <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-[#E5CCE3] p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-[#E5CCE3] mb-5">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-[#A91079]" />
-                <h3 className="text-base font-extrabold text-[#2E0249]">
-                  {activeDept.name} Department AI Reports & Statutory Audit
-                </h3>
-              </div>
-              <button
-                onClick={() => setIsAIReportModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <PrincipalAIReportsCard
-              departmentsCount={departments.length || 8}
-              sectionsCount={sections.length}
-              teachersCount={deptTeachers.length}
-              slotsCount={slots.filter((s) => s.department_name === activeDept.name).length || slots.length}
-              departmentId={activeDept.id}
-              departmentName={activeDept.name}
-              departmentCode={activeDept.code}
-              requesterName={currentUser.name}
-              requesterTitle={currentUser.position}
-              isDeptHead={true}
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 };
