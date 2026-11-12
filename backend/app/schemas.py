@@ -188,6 +188,7 @@ class ScheduleOperationResponse(BaseModel):
     latency_ms: float
     disruption_cost: int = 0
     diff: Optional[DiffResult] = None
+    report: Optional[str] = None
     llm_report: Optional[str] = None
     slots_count: int = 0
     slots: List[ScheduleSlotRead] = Field(default_factory=list)

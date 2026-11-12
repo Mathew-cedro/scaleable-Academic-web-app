@@ -12,8 +12,8 @@ from sqlmodel import Session, SQLModel, create_engine
 DEFAULT_DB_FILE = Path(__file__).resolve().parent.parent / "scheduler.db"
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_DB_FILE}")
 
-# SQLite requires check_same_thread=False for FastAPI concurrent requests
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+# SQLite requires check_same_thread=False for FastAPI concurrent requests and timeout=30 to prevent lock contention
+connect_args = {"check_same_thread": False, "timeout": 30} if DATABASE_URL.startswith("sqlite") else {}
 
 engine = create_engine(
     DATABASE_URL,

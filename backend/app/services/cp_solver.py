@@ -1242,6 +1242,7 @@ def repair_schedule(
         latency_ms=latency_ms,
         disruption_cost=diff_result.disruption_cost,
         diff=diff_result,
+        report=report_text,
         llm_report=report_text,
         slots_count=len(saved_slots),
         slots=hydrated_slots,

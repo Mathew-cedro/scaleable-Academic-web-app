@@ -50,6 +50,7 @@ export interface OperationResponse {
       reason: string;
     }>;
   };
+  report?: string;
   llm_report?: string;
   slots_count: number;
   slots: any[];
