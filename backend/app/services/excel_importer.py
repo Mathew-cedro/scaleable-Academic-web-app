@@ -212,7 +212,7 @@ def generate_section_schedule_template(section: Section, session: Session) -> io
     """
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = f"Schedule - {section.name[:25]}"
+    ws.title = f"Sched - {section.name}"[:31]
 
     # Color Palette: Velvet Plum & Professional Slate
     title_font = Font(name="Calibri", size=11, bold=True, color="2E0249")
