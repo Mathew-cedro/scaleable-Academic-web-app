@@ -972,6 +972,7 @@ export default function App() {
                   onEmptySlotClick={handleOpenAssignEmptySlot}
                   onAddTeacher={() => handleOpenAddTeacher()}
                   onChangeAdviser={handleChangeAdviser}
+                  onRefreshData={fetchData}
                 />
               )}
 

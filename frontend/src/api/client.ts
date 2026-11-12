@@ -771,6 +771,91 @@ export const api = {
     window.URL.revokeObjectURL(downloadUrl);
   },
 
+  async downloadSectionScheduleTemplateExcel(sectionId: number, sectionName: string = "Section"): Promise<void> {
+    const url = `${API_BASE}/sections/${sectionId}/schedule-template-excel`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, "Failed to download section schedule template"));
+    }
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    const safeName = sectionName.replace(/[^a-zA-Z0-9_\-]/g, "_");
+    link.setAttribute("download", `Schedule_Template_${safeName}.xlsx`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(downloadUrl);
+  },
+
+  async previewSectionScheduleExcel(sectionId: number, file: File): Promise<{
+    success: boolean;
+    section_id: number;
+    section_name: string;
+    layout_detected: "GRID_MATRIX" | "TABULAR_LIST";
+    slots: Array<{
+      day_of_week: number;
+      day_name: string;
+      period_index: number;
+      time_str: string;
+      raw_subject: string;
+      subject_id: number | null;
+      subject_name: string;
+      raw_teacher?: string | null;
+      teacher_id: number | null;
+      teacher_name: string;
+      is_locked: boolean;
+      status: "VALID" | "CONFLICT" | "WARNING" | "UNMATCHED_SUBJECT" | "UNMATCHED_TEACHER";
+      message: string;
+    }>;
+    stats: {
+      total_slots: number;
+      valid_count: number;
+      conflict_count: number;
+      warning_count: number;
+    };
+    can_import: boolean;
+  }> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${API_BASE}/sections/${sectionId}/preview-schedule-excel`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, "Failed to preview section schedule"));
+    }
+    return res.json();
+  },
+
+  async importSectionScheduleExcel(
+    sectionId: number,
+    slots: Array<{
+      day_of_week: number;
+      period_index: number;
+      subject_id: number;
+      teacher_id: number;
+      is_locked?: boolean;
+    }>
+  ): Promise<{
+    success: boolean;
+    section_id: number;
+    section_name: string;
+    slots_imported: number;
+    message: string;
+  }> {
+    const res = await fetch(`${API_BASE}/sections/${sectionId}/import-schedule-excel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slots }),
+    });
+    if (!res.ok) {
+      throw new Error(await parseErrorMessage(res, "Failed to import section schedule"));
+    }
+    return res.json();
+  },
+
   async previewSectionsExcel(file: File): Promise<{
     success: boolean;
     filename: string;

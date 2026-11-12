@@ -4,6 +4,7 @@ CRUD operations for 8 departments, teacher profiles, workload caps, and leave st
 Enforces RA 4670 Magna Carta limits (<= 6 hours/day actual teaching).
 """
 
+import re
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from fastapi.responses import StreamingResponse
@@ -25,6 +26,9 @@ from app.schemas import (
     TeacherUpdate,
 )
 from app.services.excel_importer import (
+    generate_section_schedule_template,
+    parse_and_preview_section_schedule_excel,
+    persist_section_schedule_excel,
     generate_sections_excel_template,
     import_sections_from_items,
     parse_and_preview_spreadsheet,
@@ -500,6 +504,86 @@ def import_sections_excel(
     })
 
     return res
+
+
+@router.get("/sections/{section_id}/schedule-template-excel")
+def download_section_schedule_excel_template(
+    section_id: int,
+    session: Session = Depends(get_session),
+):
+    """
+    Download a formatted DepEd Section Schedule / Timetable Excel (.xlsx) template
+    pre-filled with the section's bell schedule and Monday-Friday periods.
+    """
+    sec = session.get(Section, section_id)
+    if not sec:
+        raise HTTPException(status_code=404, detail="Section not found")
+    buffer = generate_section_schedule_template(sec, session)
+    safe_name = re.sub(r"[^a-zA-Z0-9_\-]", "_", sec.name)
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="Schedule_{safe_name}.xlsx"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
+@router.post("/sections/{section_id}/preview-schedule-excel")
+async def preview_section_schedule_excel(
+    section_id: int,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+):
+    """
+    Parse an uploaded section schedule spreadsheet (.xlsx, .xls, .csv),
+    audit slots against teacher double-booking, RA 4670, and DepEd DO 009,
+    and return an interactive preview payload.
+    """
+    contents = await file.read()
+    filename = file.filename or "schedule.xlsx"
+    result = parse_and_preview_section_schedule_excel(contents, filename, section_id, session)
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("error", "Failed to parse section schedule spreadsheet."),
+        )
+    return result
+
+
+@router.post("/sections/{section_id}/import-schedule-excel")
+def import_section_schedule_excel(
+    section_id: int,
+    data: Dict[str, Any],
+    session: Session = Depends(get_session),
+):
+    """
+    Persist verified schedule slots from Excel preview into database for section_id.
+    Atomically clears previous section slots, inserts new slots, recalculates teacher
+    loads, and broadcasts WebSocket sync event.
+    """
+    slots_data = data.get("slots", [])
+    if not slots_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No schedule slots provided to import.",
+        )
+    result = persist_section_schedule_excel(section_id, slots_data, session)
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("error", "Failed to persist schedule."),
+        )
+
+    broadcast_sync({
+        "event": "SCHEDULE_UPDATED",
+        "action": "SECTION_SCHEDULE_EXCEL_IMPORTED",
+        "section_id": section_id,
+        "slots_count": result.get("slots_imported", 0),
+    })
+
+    return result
 
 
 @router.put("/sections/{section_id}", response_model=SectionRead)

@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { api } from "../api/client";
 import { ExportDocxModal } from "./ExportDocxModal";
+import { ImportSectionScheduleModal } from "./ImportSectionScheduleModal";
 import {
   evaluateSlotConflict,
   getSectionConflictStats
@@ -74,6 +75,7 @@ interface Props {
   onEmptySlotClick?: (sectionId: number, day: number, period: number) => void;
   onAddTeacher?: () => void;
   onChangeAdviser?: (sectionId: number, teacherId: number) => Promise<void>;
+  onRefreshData?: () => void;
 }
 
 const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
@@ -90,6 +92,7 @@ export const ClassTimetableGrid = ({
   onEmptySlotClick,
   onAddTeacher,
   onChangeAdviser,
+  onRefreshData,
 }: Props) => {
   const { t, isTagalog } = useLanguage();
   // Search and filter states
@@ -106,6 +109,7 @@ export const ClassTimetableGrid = ({
   const [isExportDocxModalOpen, setIsExportDocxModalOpen] = useState(false);
   const [isExportingDocx, setIsExportingDocx] = useState(false);
   const [isExportingSF7, setIsExportingSF7] = useState(false);
+  const [isImportScheduleExcelOpen, setIsImportScheduleExcelOpen] = useState(false);
 
   const handleExportSF7 = async () => {
     setIsExportingSF7(true);
@@ -694,6 +698,15 @@ export const ClassTimetableGrid = ({
             </button>
             <button
               type="button"
+              onClick={() => setIsImportScheduleExcelOpen(true)}
+              className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold transition shadow-2xs flex items-center gap-1.5 cursor-pointer"
+              title={isTagalog ? "Mag-import ng Talaorasan ng Seksiyon gamit ang Excel/CSV" : "Import Section Timetable via Excel or CSV"}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{isTagalog ? "Mag-import ng Talaorasan (Excel)" : "Import Schedule (Excel)"}</span>
+            </button>
+            <button
+              type="button"
               onClick={handleExportSF7}
               disabled={isExportingSF7}
               className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold transition shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
@@ -993,6 +1006,17 @@ export const ClassTimetableGrid = ({
           }}
         />
       )}
+
+      {/* Import Section Weekly Schedule (Excel / CSV) Modal */}
+      <ImportSectionScheduleModal
+        isOpen={isImportScheduleExcelOpen}
+        onClose={() => setIsImportScheduleExcelOpen(false)}
+        sections={sections}
+        initialSectionId={selectedSectionId}
+        onImportComplete={() => {
+          if (onRefreshData) onRefreshData();
+        }}
+      />
     </div>
   );
 };
