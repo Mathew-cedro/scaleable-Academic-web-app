@@ -254,11 +254,11 @@ export const Sidebar = ({
           </nav>
         </div>
 
-        {/* Category 2: Faculty & Magna Carta */}
+        {/* Category 2: Faculty */}
         <div>
           {!collapsed ? (
             <div className="text-xs font-semibold text-[#D5B4DE] px-3 mb-1.5">
-              {isTagalog ? "Kaguruan at Magna Carta" : "Faculty & Magna Carta"}
+              {isTagalog ? "Kaguruan" : "Faculty"}
             </div>
           ) : (
             <div className="border-t border-[#570A57] my-1.5 mx-2" />
