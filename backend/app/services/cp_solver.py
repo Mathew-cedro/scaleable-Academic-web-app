@@ -45,6 +45,25 @@ def get_rank_score(position: Optional[str]) -> int:
     return 0
 
 
+TRACK_ALIASES: Dict[str, List[str]] = {
+    "STE": ["STE", "STEM"],
+    "STEM": ["STE", "STEM"],
+    "SPJ": ["SPJ", "JOURNALISM"],
+    "JOURNALISM": ["SPJ", "JOURNALISM"],
+    "SPS": ["SPS", "SPORTS"],
+    "SPORTS": ["SPS", "SPORTS"],
+    "SPA": ["SPA", "ARTS"],
+    "ARTS": ["SPA", "ARTS"],
+    "BEC": ["BEC", "REGULAR", "STANDARD", "GENERAL"],
+    "REGULAR": ["BEC", "REGULAR", "STANDARD", "GENERAL"],
+}
+
+
+def get_track_aliases(program_type: Optional[str]) -> List[str]:
+    pt = (program_type or "BEC").strip().upper()
+    return TRACK_ALIASES.get(pt, [pt])
+
+
 def is_special_track(program_type: Optional[str]) -> bool:
     """Returns True if the curricular program is a specialized track (STE, SPS, SPA, SPJ, etc.)."""
     if not program_type:
@@ -53,20 +72,49 @@ def is_special_track(program_type: Optional[str]) -> bool:
     return norm not in ("BEC", "REGULAR", "STANDARD", "GENERAL")
 
 
+def is_specialized_subject(program_type: Optional[str], subject_id: int) -> bool:
+    """
+    Returns True if the subject is a non-core specialized track offering (e.g. STE, SPJ, SPS, SPA).
+    Standard Key Stage 3 core academic subjects (IDs 1-8: Science, Math, English, Filipino, AP, TLE, MAPEH, EsP)
+    and Homeroom Guidance (ID 9) are core subjects scheduled in Periods 1-7.
+    Any non-core subject in a special track section is a specialized subject scheduled in Periods 8-9.
+    """
+    return is_special_track(program_type) and subject_id not in (1, 2, 3, 4, 5, 6, 7, 8, 9)
+
+
+def get_sec_periods(program_type: Optional[str], subject_id: int, total_specialized_loads: int = 8) -> List[int]:
+    """
+    Determine allowable teaching periods for a subject within a section.
+    - Regular BEC sections: Periods 1 to 7.
+    - Special tracks:
+      - Core academic subjects (IDs 1-8): Periods 1 to 7.
+      - Specialized track subjects (IDs > 8):
+        - If total specialized loads <= 10: Periods 8 and 9 (extended day, 10 slots/week).
+        - If total specialized loads > 10: Periods 5 to 9 (afternoon flexible with P8-9 preference).
+    """
+    if not is_special_track(program_type):
+        return [1, 2, 3, 4, 5, 6, 7]
+    if subject_id in (1, 2, 3, 4, 5, 6, 7, 8, 9):
+        return [1, 2, 3, 4, 5, 6, 7]
+    if total_specialized_loads > 10:
+        return [5, 6, 7, 8, 9]
+    return [8, 9]
+
+
 def is_track_matching_subject(program_type: Optional[str], subject_name: str) -> bool:
     """Returns True if the specialized subject belongs to the given curricular program track."""
     t_code = (program_type or "").upper().strip()
     s_name = (subject_name or "").lower().strip()
     if t_code in ("BEC", "REGULAR", "STANDARD", "GENERAL"):
         return False
-    if t_code == "SPS" and any(k in s_name for k in ["sport", "athlet", "fitness", "kinesiology", "pe"]):
-        return True
-    if t_code == "STE" and any(k in s_name for k in ["research", "robot", "biotech", "calculus", "advanced", "stem"]):
-        return True
-    if t_code == "SPA" and any(k in s_name for k in ["art", "music", "dance", "theater", "creative"]):
-        return True
-    if t_code == "SPJ" and any(k in s_name for k in ["journalism", "press", "broadcast", "writer", "radio"]):
-        return True
+    if t_code in ("SPS", "SPORTS"):
+        return any(k in s_name for k in ["sport", "athlet", "fitness", "kinesiology", "pe", "train"])
+    if t_code in ("STE", "STEM"):
+        return any(k in s_name for k in ["research", "robot", "biotech", "calculus", "advanced", "stem", "ict", "tech", "computer", "science"])
+    if t_code in ("SPA", "ARTS"):
+        return any(k in s_name for k in ["art", "music", "dance", "theater", "creative", "visual", "pottery", "paint", "drama"])
+    if t_code in ("SPJ", "JOURNALISM"):
+        return any(k in s_name for k in ["journalism", "press", "broadcast", "writer", "radio", "letter", "paper", "news", "media", "publish"])
     return False
 
 
@@ -173,40 +221,36 @@ def generate_master_schedule(
     def get_section_subjects(sec: Section) -> List[Subject]:
         p_type = (sec.program_type or "BEC").upper().strip()
         sec_grade = sec.grade_level
+        aliases = get_track_aliases(p_type)
 
         if config.track_subjects:
-            # 1. First check grade-specific keys: e.g. "STE_7", "STE:7", "STE-7", "BEC_7", "REGULAR_7"
-            grade_keys = [
-                f"{p_type}_{sec_grade}",
-                f"{p_type}:{sec_grade}",
-                f"{p_type}-{sec_grade}",
-            ]
-            if p_type in ("BEC", "REGULAR"):
-                grade_keys.extend([f"BEC_{sec_grade}", f"REGULAR_{sec_grade}"])
-
             matched_ids = None
-            for gk in grade_keys:
-                for k, ids in config.track_subjects.items():
-                    if k.upper().strip() == gk:
-                        matched_ids = ids
+            # 1. First check grade-specific keys across aliases: e.g. "STE_7", "STEM_7"
+            for alias in aliases:
+                grade_keys = [
+                    f"{alias}_{sec_grade}",
+                    f"{alias}:{sec_grade}",
+                    f"{alias}-{sec_grade}",
+                ]
+                for gk in grade_keys:
+                    for k, ids in config.track_subjects.items():
+                        if k.upper().strip() == gk:
+                            matched_ids = ids
+                            break
+                    if matched_ids:
                         break
                 if matched_ids:
                     break
 
-            # 2. Fallback to general track key if no grade-specific key
+            # 2. Fallback to general track key across aliases
             if not matched_ids:
-                general_key = next(
-                    (
-                        k
-                        for k in config.track_subjects
-                        if k.upper().strip() == p_type
-                        or (p_type == "REGULAR" and k.upper().strip() == "BEC")
-                        or (p_type == "BEC" and k.upper().strip() == "REGULAR")
-                    ),
-                    None,
-                )
-                if general_key and config.track_subjects[general_key]:
-                    matched_ids = config.track_subjects[general_key]
+                for alias in aliases:
+                    for k, ids in config.track_subjects.items():
+                        if k.upper().strip() == alias:
+                            matched_ids = ids
+                            break
+                    if matched_ids:
+                        break
 
             if matched_ids:
                 allowed_ids = set(matched_ids)
@@ -222,7 +266,7 @@ def generate_master_schedule(
         special_matched = [
             s for s in academic_subjects
             if s.id in (1, 2, 3, 4, 5, 6, 7, 8)
-            or (is_track_matching_subject(p_type, s.name) and (s.grade_level == sec_grade or s.grade_level == 0))
+            or (is_specialized_subject(p_type, s.id) and (s.grade_level == sec_grade or s.grade_level == 0) and is_track_matching_subject(p_type, s.name))
         ]
         return special_matched if special_matched else [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
 
@@ -292,9 +336,7 @@ def generate_master_schedule(
             Y[t.id, c.id, s.id] * ((s.required_weekly_loads or 4) if s else 4)
             for c in sections
             for s in section_subjects[c.id]
-            if (t.id, c.id, s.id) in Y and is_special_track(c.program_type) and (
-                s.id > 8 and is_track_matching_subject(c.program_type, s.name)
-            )
+            if (t.id, c.id, s.id) in Y and is_specialized_subject(c.program_type, s.id)
         ]
         if t_special_loads:
             p1_model.Add(sum(t_special_loads) <= 8)
@@ -380,15 +422,22 @@ def generate_master_schedule(
     if config.preserve_locked_slots:
         existing_locked_slots = session.exec(select(ScheduleSlot).where(ScheduleSlot.is_locked == True)).all()
 
+    # Precalculate total specialized loads per section to determine period allotment
+    sec_total_spec_loads: Dict[int, int] = {
+        c.id: sum(
+            (subject_map[s.id].required_weekly_loads if s.id in subject_map and subject_map[s.id].required_weekly_loads else 4)
+            for s in section_subjects[c.id]
+            if is_specialized_subject(c.program_type, s.id)
+        )
+        for c in sections
+    }
+
     def build_p2_model(allow_relaxed_consec: bool = False) -> Tuple[cp_model.CpModel, Dict]:
         p2_m = cp_model.CpModel()
         p2_X = {}
         for (t_id, c_id, s_id) in assigned_pairs:
             sec = section_map[c_id]
-            is_specialized = is_special_track(sec.program_type) and (
-                s_id > 8 and is_track_matching_subject(sec.program_type, subject_map[s_id].name if s_id in subject_map else "")
-            )
-            sec_periods = [8, 9] if is_specialized else [1, 2, 3, 4, 5, 6, 7]
+            sec_periods = get_sec_periods(sec.program_type, s_id, sec_total_spec_loads.get(c_id, 8))
             for d in days:
                 for p in sec_periods:
                     p2_X[t_id, c_id, s_id, d, p] = p2_m.NewBoolVar(f"x_{t_id}_{c_id}_{s_id}_{d}_{p}")
@@ -402,10 +451,7 @@ def generate_master_schedule(
         for (t_id, c_id, s_id) in assigned_pairs:
             sub = subject_map.get(s_id)
             sec = section_map[c_id]
-            is_specialized = is_special_track(sec.program_type) and (
-                s_id > 8 and is_track_matching_subject(sec.program_type, sub.name if sub else "")
-            )
-            sec_periods = [8, 9] if is_specialized else [1, 2, 3, 4, 5, 6, 7]
+            sec_periods = get_sec_periods(sec.program_type, s_id, sec_total_spec_loads.get(c_id, 8))
             req_loads = (sub.required_weekly_loads if sub else 4) or 4
             p2_m.Add(sum(p2_X[t_id, c_id, s_id, d, p] for d in days for p in sec_periods if (t_id, c_id, s_id, d, p) in p2_X) == req_loads)
 
@@ -549,9 +595,7 @@ def generate_master_schedule(
                 is_morning_pref = any(k in name_lower for k in ["math", "science", "english", "filipino", "araling", "ap"])
                 is_afternoon_pref = any(k in name_lower for k in ["mapeh", "tle", "technology", "livelihood", "pe", "arts", "music", "research"])
 
-            is_specialized = is_special_track(sec.program_type) and (
-                s_id > 8 and is_track_matching_subject(sec.program_type, sub.name)
-            )
+            is_specialized = is_specialized_subject(sec.program_type, s_id)
 
             for d in days:
                 for p in sec_periods:
@@ -669,10 +713,7 @@ def generate_master_schedule(
     # 2. Add solved academic subject slots
     for (t_id, c_id, s_id) in assigned_pairs:
         sec = section_map[c_id]
-        is_specialized = is_special_track(sec.program_type) and (
-            s_id > 8 and is_track_matching_subject(sec.program_type, subject_map[s_id].name if s_id in subject_map else "")
-        )
-        sec_periods = [8, 9] if is_specialized else [1, 2, 3, 4, 5, 6, 7]
+        sec_periods = get_sec_periods(sec.program_type, s_id, sec_total_spec_loads.get(c_id, 8))
         for d in days:
             for p in sec_periods:
                 if (t_id, c_id, s_id, d, p) in X and p2_solver.Value(X[t_id, c_id, s_id, d, p]) == 1:
@@ -804,37 +845,34 @@ def repair_schedule(
     def get_repair_section_subjects(sec: Section) -> List[Subject]:
         p_type = (sec.program_type or "BEC").upper().strip()
         sec_grade = sec.grade_level
+        aliases = get_track_aliases(p_type)
 
         if config and config.track_subjects:
-            grade_keys = [
-                f"{p_type}_{sec_grade}",
-                f"{p_type}:{sec_grade}",
-                f"{p_type}-{sec_grade}",
-            ]
-            if p_type in ("BEC", "REGULAR"):
-                grade_keys.extend([f"BEC_{sec_grade}", f"REGULAR_{sec_grade}"])
-
             matched_ids = None
-            for gk in grade_keys:
-                for k, ids in config.track_subjects.items():
-                    if k.upper().strip() == gk:
-                        matched_ids = ids
+            for alias in aliases:
+                grade_keys = [
+                    f"{alias}_{sec_grade}",
+                    f"{alias}:{sec_grade}",
+                    f"{alias}-{sec_grade}",
+                ]
+                for gk in grade_keys:
+                    for k, ids in config.track_subjects.items():
+                        if k.upper().strip() == gk:
+                            matched_ids = ids
+                            break
+                    if matched_ids:
                         break
                 if matched_ids:
                     break
 
             if not matched_ids:
-                general_key = next(
-                    (
-                        k for k in config.track_subjects
-                        if k.upper().strip() == p_type
-                        or (p_type == "REGULAR" and k.upper().strip() == "BEC")
-                        or (p_type == "BEC" and k.upper().strip() == "REGULAR")
-                    ),
-                    None,
-                )
-                if general_key and config.track_subjects[general_key]:
-                    matched_ids = config.track_subjects[general_key]
+                for alias in aliases:
+                    for k, ids in config.track_subjects.items():
+                        if k.upper().strip() == alias:
+                            matched_ids = ids
+                            break
+                    if matched_ids:
+                        break
 
             if matched_ids:
                 allowed_ids = set(matched_ids)
@@ -845,14 +883,21 @@ def repair_schedule(
         # Fallback when no config track_subjects: preserve existing subjects plus any grade-matched subjects
         existing_sub_ids = {s.subject_id for s in original_slots if s.section_id == sec.id and s.subject_id != homeroom_id}
         if existing_sub_ids:
-            return [s for s in academic_subjects if s.id in existing_sub_ids]
+            grade_new_special = [
+                s for s in academic_subjects
+                if s.id not in existing_sub_ids
+                and is_specialized_subject(p_type, s.id)
+                and (s.grade_level == sec_grade or s.grade_level == 0)
+                and is_track_matching_subject(p_type, s.name)
+            ]
+            return [s for s in academic_subjects if s.id in existing_sub_ids] + grade_new_special
         if p_type in ("BEC", "REGULAR"):
             core_matched = [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
             return core_matched if core_matched else academic_subjects
         special_matched = [
             s for s in academic_subjects
             if s.id in (1, 2, 3, 4, 5, 6, 7, 8)
-            or (is_track_matching_subject(p_type, s.name) and (s.grade_level == sec_grade or s.grade_level == 0))
+            or (is_specialized_subject(p_type, s.id) and (s.grade_level == sec_grade or s.grade_level == 0) and is_track_matching_subject(p_type, s.name))
         ]
         return special_matched if special_matched else [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
 
@@ -910,6 +955,16 @@ def repair_schedule(
 
     model = cp_model.CpModel()
 
+    # Precalculate specialized loads per section for repair period boundaries
+    repair_sec_total_spec_loads: Dict[int, int] = {
+        c.id: sum(
+            req_counts.get((c.id, s.id), 4)
+            for s in section_subjects[c.id]
+            if is_specialized_subject(c.program_type, s.id)
+        )
+        for c in sections
+    }
+
     # Decision variables for repair
     X = {}
     for (c_id, s_id), count in req_counts.items():
@@ -917,10 +972,7 @@ def repair_schedule(
         if not sub:
             continue
         c = section_map.get(c_id)
-        is_specialized = c and is_special_track(c.program_type) and (
-            s_id > 8 and is_track_matching_subject(c.program_type, sub.name if sub else "")
-        )
-        sec_periods = [8, 9] if is_specialized else [1, 2, 3, 4, 5, 6, 7]
+        sec_periods = get_sec_periods(c.program_type if c else None, s_id, repair_sec_total_spec_loads.get(c_id, 8))
         eligible = dept_teachers.get(sub.department_id, [])
         for t in eligible:
             for d in days:
@@ -979,9 +1031,7 @@ def repair_schedule(
         if not sub:
             continue
         sec = section_map.get(c_id)
-        is_specialized = sec and is_special_track(sec.program_type) and (
-            s_id > 8 and is_track_matching_subject(sec.program_type, sub.name)
-        )
+        is_specialized = is_specialized_subject(sec.program_type if sec else None, s_id)
         if is_specialized:
             if p in (8, 9):
                 placement_penalties.append(-250 * var)
@@ -1060,10 +1110,7 @@ def repair_schedule(
         if not sub:
             continue
         c = section_map.get(c_id)
-        is_specialized = c and is_special_track(c.program_type) and (
-            s_id > 8 and is_track_matching_subject(c.program_type, sub.name if sub else "")
-        )
-        sec_periods = [8, 9] if is_specialized else [1, 2, 3, 4, 5, 6, 7]
+        sec_periods = get_sec_periods(c.program_type if c else None, s_id, repair_sec_total_spec_loads.get(c_id, 8))
         eligible = dept_teachers.get(sub.department_id, [])
         all_slots = [
             X[t.id, c_id, s_id, d, p]
