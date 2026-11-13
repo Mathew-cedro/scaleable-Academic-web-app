@@ -1008,15 +1008,17 @@ export const ClassTimetableGrid = ({
       )}
 
       {/* Import Section Weekly Schedule (Excel / CSV) Modal */}
-      <ImportSectionScheduleModal
-        isOpen={isImportScheduleExcelOpen}
-        onClose={() => setIsImportScheduleExcelOpen(false)}
-        sections={sections}
-        initialSectionId={selectedSectionId}
-        onImportComplete={() => {
-          if (onRefreshData) onRefreshData();
-        }}
-      />
+      {isImportScheduleExcelOpen && (
+        <ImportSectionScheduleModal
+          isOpen={isImportScheduleExcelOpen}
+          onClose={() => setIsImportScheduleExcelOpen(false)}
+          sections={sections}
+          initialSectionId={selectedSectionId}
+          onImportComplete={() => {
+            if (onRefreshData) onRefreshData();
+          }}
+        />
+      )}
     </div>
   );
 };

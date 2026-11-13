@@ -109,6 +109,7 @@ interface Subject {
   required_weekly_loads: number;
   duration_minutes?: number;
   preferred_placement?: string;
+  program_type?: string;
 }
 
 
@@ -381,12 +382,14 @@ export const GenerateMasterTab = ({
   const [editTrackDesc, setEditTrackDesc] = useState("");
   const [editTrackColor, setEditTrackColor] = useState<ModularTrack["badgeColor"]>("fuchsia");
 
-  // Create Subject Form State
+  // Add Subject Modal State (Catalog vs Create)
+  const [addSubjectMode, setAddSubjectMode] = useState<"CATALOG" | "CREATE">("CATALOG");
+  const [catalogSearchQuery, setCatalogSearchQuery] = useState("");
   const [newSubName, setNewSubName] = useState("");
   const [newSubDeptId, setNewSubDeptId] = useState<number>(departments[0]?.id || 1);
   const [newSubDuration, setNewSubDuration] = useState<number>(60);
   const [newSubLoads, setNewSubLoads] = useState<number>(4);
-  const [newSubPlacement, setNewSubPlacement] = useState<string>("FLEXIBLE");
+  const [newSubPlacement, setNewSubPlacement] = useState<string>("SPECIALIZED");
   const [addingSubjectLoading, setAddingSubjectLoading] = useState(false);
 
   // Immediate cache for newly created specialized subjects so they appear instantly in the list
@@ -637,7 +640,27 @@ export const GenerateMasterTab = ({
       currentTrack.isGradeSpecific && currentTrack.gradeSubjects?.[selectedTrackGrade]
         ? currentTrack.gradeSubjects[selectedTrackGrade]
         : currentTrack.subjectIds;
-    const validSubjectIds = new Set(gSubs);
+
+    // Also include subjects from the database explicitly tagged with this track's program_type
+    const tCode = currentTrack.code.toUpperCase().trim();
+    const trackAliases = [tCode];
+    if (tCode === "STE" || tCode === "STEM") trackAliases.push("STE", "STEM");
+    if (tCode === "SPJ" || tCode === "JOURNALISM") trackAliases.push("SPJ", "JOURNALISM");
+    if (tCode === "SPS" || tCode === "SPORTS") trackAliases.push("SPS", "SPORTS");
+    if (tCode === "SPA" || tCode === "ARTS") trackAliases.push("SPA", "ARTS");
+
+    const dbTrackMatchingIds = allSubjects
+      .filter((s) => {
+        if (!s.program_type || s.program_type === "ALL") return false;
+        const sType = s.program_type.toUpperCase().trim();
+        return (
+          trackAliases.includes(sType) &&
+          (s.grade_level === selectedTrackGrade || s.grade_level === 0)
+        );
+      })
+      .map((s) => s.id);
+
+    const validSubjectIds = new Set([...gSubs, ...dbTrackMatchingIds]);
     return allSubjects.filter((s) => validSubjectIds.has(s.id));
   }, [currentTrack, allSubjects, selectedTrackGrade]);
 
@@ -853,8 +876,111 @@ export const GenerateMasterTab = ({
   };
 
   const handleOpenAddSubject = (grade?: number) => {
-    setAddSubjectTargetGrade(grade !== undefined ? grade : selectedTrackGrade);
+    const targetG = grade !== undefined ? grade : selectedTrackGrade;
+    setAddSubjectTargetGrade(targetG);
+    const isSpecial = currentTrack && !["BEC", "REGULAR", "STANDARD", "GENERAL"].includes(currentTrack.code.toUpperCase());
+    setNewSubPlacement(isSpecial ? "SPECIALIZED" : "FLEXIBLE");
+    setCatalogSearchQuery("");
+    setNewSubName("");
+    const currentSubs = currentTrack?.gradeSubjects?.[targetG] || currentTrack?.subjectIds || [];
+    const availableCatalog = allSubjects.filter((s) => !currentSubs.includes(s.id));
+    setAddSubjectMode(availableCatalog.length > 0 ? "CATALOG" : "CREATE");
     setIsAddSubjectOpen(true);
+  };
+
+  const handleAttachExistingSubjectToTrack = async (sub: Subject, targetGrade: number) => {
+    if (!currentTrack) return;
+    const currentSubs = currentTrack.gradeSubjects?.[targetGrade] || currentTrack.subjectIds || [];
+    if (currentSubs.includes(sub.id)) {
+      setActionAlert({
+        title: "Subject Already Assigned",
+        message: `"${sub.name}" is already assigned to Grade ${targetGrade} in ${currentTrack.code}.`,
+      });
+      return;
+    }
+
+    try {
+      setAddingSubjectLoading(true);
+
+      // If non-core subject (id > 9) is attached to a specialized track, update its program_type in DB
+      if (
+        sub.id > 9 &&
+        (!sub.program_type || sub.program_type === "ALL") &&
+        !["BEC", "REGULAR"].includes(currentTrack.code.toUpperCase())
+      ) {
+        try {
+          await api.updateSubject(sub.id, { program_type: currentTrack.code });
+        } catch {
+          // non-critical
+        }
+      }
+
+      // 1. Add to current track for target grade and save to localStorage
+      const nextTracks = tracks.map((t) => {
+        if (t.id !== currentTrack.id && t.code !== currentTrack.code) return t;
+        const currentGradeSubs = t.gradeSubjects?.[targetGrade] || t.subjectIds || [];
+        const updatedGradeSubs = Array.from(new Set([...currentGradeSubs, sub.id]));
+        const updatedGradeSubjects = {
+          ...(t.gradeSubjects || {
+            7: [...t.subjectIds],
+            8: [...t.subjectIds],
+            9: [...t.subjectIds],
+            10: [...t.subjectIds],
+          }),
+          [targetGrade]: updatedGradeSubs,
+        };
+        const allIds = Array.from(
+          new Set([
+            ...t.subjectIds,
+            ...(updatedGradeSubjects[7] || []),
+            ...(updatedGradeSubjects[8] || []),
+            ...(updatedGradeSubjects[9] || []),
+            ...(updatedGradeSubjects[10] || []),
+            sub.id,
+          ])
+        );
+        return {
+          ...t,
+          isGradeSpecific: true,
+          gradeSubjects: updatedGradeSubjects,
+          subjectIds: allIds,
+        };
+      });
+
+      setTracks(nextTracks);
+      saveModularTracks(nextTracks);
+
+      // 2. Ensure view is looking at target grade
+      setSelectedTrackGrade(targetGrade);
+
+      // 3. Ensure subject allotments has this subject configured
+      const isSpecial = currentTrack && !["BEC", "REGULAR", "STANDARD", "GENERAL"].includes(currentTrack.code.toUpperCase());
+      setSubjectAllotments((prev) => ({
+        ...prev,
+        [sub.id]: prev[sub.id] || {
+          duration_minutes: sub.duration_minutes || 60,
+          required_weekly_loads: sub.required_weekly_loads || 4,
+          is_adviser_locked:
+            sub.name.toLowerCase().includes("homeroom") ||
+            sub.name.toLowerCase().includes("guidance") ||
+            sub.preferred_placement === "MON_P1_LOCK",
+          preferred_placement: sub.preferred_placement || (isSpecial ? "SPECIALIZED" : "FLEXIBLE"),
+        },
+      }));
+
+      setIsAddSubjectOpen(false);
+
+      if (onRefreshData) {
+        onRefreshData();
+      }
+    } catch (err: any) {
+      setActionAlert({
+        title: "Subject Assignment Error",
+        message: err.message || "Failed to attach subject to curricular track.",
+      });
+    } finally {
+      setAddingSubjectLoading(false);
+    }
   };
 
   const handleCreateNewSubjectForTrack = async (e: React.FormEvent) => {
@@ -887,6 +1013,7 @@ export const GenerateMasterTab = ({
         required_weekly_loads: newSubLoads,
         duration_minutes: newSubDuration,
         preferred_placement: newSubPlacement,
+        program_type: currentTrack.code,
       });
 
       savePlacementOverride(created.id, newSubPlacement);
@@ -949,7 +1076,7 @@ export const GenerateMasterTab = ({
       // 5. Close modal and reset form immediately
       setIsAddSubjectOpen(false);
       setNewSubName("");
-      setNewSubPlacement("FLEXIBLE");
+      setNewSubPlacement("SPECIALIZED");
 
       // 6. Refresh master data in background
       if (onRefreshData) {
@@ -1610,7 +1737,7 @@ export const GenerateMasterTab = ({
               {/* Warning or Special Track Badge based on weekly loads */}
               {(() => {
                 const isSpecial = currentTrack && !["BEC", "REGULAR", "STANDARD", "GENERAL"].includes(currentTrack.code.toUpperCase());
-                const maxLoads = isSpecial ? 42 : 34;
+                const maxLoads = isSpecial ? 44 : 34;
 
                 if (currentGradeTotalLoads > maxLoads) {
                   return (
@@ -3386,21 +3513,22 @@ export const GenerateMasterTab = ({
         </div>
       )}
 
-      {/* MODAL 3: Add Subject to Track Modal */}
+      {/* MODAL 3: Add Subject to Track Modal (Dual Mode: Catalog vs Create) */}
       {isAddSubjectOpen && currentTrack && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-xl w-full overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
               <div className="flex items-center gap-2.5">
-                <span className="p-2 bg-[#FDF2FA] text-[#A91079] rounded-xl">
-                  <Plus className="w-4 h-4" />
+                <span className="p-2 bg-[#FDF2FA] text-[#A91079] rounded-xl border border-[#E5CCE3]">
+                  <BookOpen className="w-5 h-5" />
                 </span>
                 <div>
-                  <h3 className="text-sm font-extrabold text-slate-900">
-                    Add Subject to Track: {currentTrack.code}
+                  <h3 className="text-sm font-extrabold text-[#2E0249]">
+                    Add Learning Area: {currentTrack.code} (Grade {addSubjectTargetGrade})
                   </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Create and add a specialized learning area directly to Grade {addSubjectTargetGrade}.
+                  <p className="text-[11px] text-[#703372]">
+                    Attach an existing subject from the school catalog or define a new specialized curriculum subject.
                   </p>
                 </div>
               </div>
@@ -3413,170 +3541,352 @@ export const GenerateMasterTab = ({
               </button>
             </div>
 
-            <form onSubmit={handleCreateNewSubjectForTrack} className="p-6 space-y-4 text-xs">
-              {/* Target Grade Selector */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1.5 flex items-center justify-between">
-                  <span>Target Grade Level</span>
-                  <span className="text-[10px] text-slate-400 font-normal">
-                    Assign to specific grade level
-                  </span>
-                </label>
-                <div className="flex items-center gap-1.5">
-                  {[7, 8, 9, 10].map((g) => (
-                    <button
-                      key={g}
-                      type="button"
-                      onClick={() => setAddSubjectTargetGrade(g)}
-                      className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                        addSubjectTargetGrade === g
-                          ? "bg-[#A91079] text-white shadow-2xs font-extrabold"
-                          : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                      }`}
-                    >
-                      Grade {g}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Specialized Subject Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  value={newSubName}
-                  onChange={(e) => setNewSubName(e.target.value)}
-                  placeholder="e.g. Campus Journalism I, Robotics & Automation, Sports Conditioning"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-hidden focus:border-[#A91079]"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Supervising Department</label>
-                <select
-                  value={newSubDeptId}
-                  onChange={(e) => setNewSubDeptId(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-hidden focus:border-[#A91079] cursor-pointer"
+            {/* Segmented Mode Selector: Catalog vs Create New */}
+            <div className="flex border-b border-slate-200 bg-slate-50/60 shrink-0">
+              <button
+                type="button"
+                onClick={() => setAddSubjectMode("CATALOG")}
+                className={`flex-1 py-2.5 text-xs font-bold transition flex items-center justify-center gap-2 border-b-2 cursor-pointer ${
+                  addSubjectMode === "CATALOG"
+                    ? "border-[#A91079] text-[#A91079] bg-white shadow-2xs font-extrabold"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Pick from School Catalog</span>
+                <span
+                  className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                    addSubjectMode === "CATALOG"
+                      ? "bg-[#FDF2FA] text-[#A91079] border border-[#E5CCE3]"
+                      : "bg-slate-200 text-slate-600"
+                  }`}
                 >
-                  {departments.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name} ({d.code})
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  {
+                    allSubjects.filter((s) => {
+                      const curSubs = currentTrack.gradeSubjects?.[addSubjectTargetGrade] || currentTrack.subjectIds || [];
+                      return !curSubs.includes(s.id);
+                    }).length
+                  }
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddSubjectMode("CREATE")}
+                className={`flex-1 py-2.5 text-xs font-bold transition flex items-center justify-center gap-2 border-b-2 cursor-pointer ${
+                  addSubjectMode === "CREATE"
+                    ? "border-[#A91079] text-[#A91079] bg-white shadow-2xs font-extrabold"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Create New Learning Area</span>
+              </button>
+            </div>
 
-              <div className="grid grid-cols-2 gap-3">
+            {/* Modal Body */}
+            {addSubjectMode === "CATALOG" ? (
+              <div className="p-6 space-y-4 overflow-y-auto">
+                {/* Target Grade Selector */}
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Duration per Meeting</label>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <div className="inline-flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 shadow-2xs">
-                        <button
-                          type="button"
-                          disabled={newSubDuration <= 20}
-                          onClick={() => setNewSubDuration((prev) => Math.max(20, prev - 10))}
-                          className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-600 hover:bg-white hover:text-[#A91079] disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
-                          title="Decrease by 10 mins"
-                        >
-                          <Minus className="w-3.5 h-3.5" />
-                        </button>
-                        <span className="w-16 text-center text-xs font-bold text-[#2E0249] tabular-nums">
-                          {formatDuration(newSubDuration)}
-                        </span>
-                        <button
-                          type="button"
-                          disabled={newSubDuration >= 240}
-                          onClick={() => setNewSubDuration((prev) => Math.min(240, prev + 10))}
-                          className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-600 hover:bg-white hover:text-[#A91079] disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
-                          title="Increase by 10 mins"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <span className="text-[11px] text-slate-500 font-semibold tabular-nums">
-                        ({newSubDuration} mins)
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Weekly Frequency</label>
-                  <div className="flex items-center gap-1">
-                    {[1, 2, 3, 4, 5].map((loads) => (
+                  <label className="block font-bold text-slate-700 mb-1.5 flex items-center justify-between text-xs">
+                    <span>Target Grade Level</span>
+                    <span className="text-[10px] text-slate-400 font-normal">
+                      Assign to specific grade level in {currentTrack.code}
+                    </span>
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    {[7, 8, 9, 10].map((g) => (
                       <button
-                        key={loads}
+                        key={g}
                         type="button"
-                        onClick={() => setNewSubLoads(loads)}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                          newSubLoads === loads
-                            ? "bg-[#A91079] text-white shadow-2xs"
+                        onClick={() => setAddSubjectTargetGrade(g)}
+                        className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                          addSubjectTargetGrade === g
+                            ? "bg-[#A91079] text-white shadow-2xs font-extrabold"
                             : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                         }`}
                       >
-                        {loads}x
+                        Grade {g}
                       </button>
                     ))}
                   </div>
                 </div>
-              </div>
 
-              {/* Preferred Placement */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1 flex items-center justify-between">
-                  <span>Preferred Placement (Daily Time Window)</span>
-                  <span className="text-[10px] text-slate-400 font-normal">
-                    Target periods for scheduler solver
-                  </span>
-                </label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {[
-                    { id: "MORNING", label: "Morning Academic", time: "7:00–11:15 AM (P1–P4)" },
-                    { id: "AFTERNOON", label: "Afternoon Applied", time: "12:00–3:00 PM (P5–P7)" },
-                    { id: "MON_P1_LOCK", label: "Monday P1 Lock", time: "Mon 7:00–8:00 AM" },
-                    { id: "FLEXIBLE", label: "Flexible Placement", time: "Any Period (P1–P7)" },
-                  ].map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setNewSubPlacement(opt.id)}
-                      className={`p-2 rounded-xl text-left border transition cursor-pointer ${
-                        newSubPlacement === opt.id
-                          ? "bg-[#FDF2FA] border-[#A91079] ring-2 ring-[#A91079]/20"
-                          : "bg-slate-50 border-slate-200 hover:bg-slate-100"
-                      }`}
-                    >
-                      <span className="text-xs font-bold text-slate-900 block">{opt.label}</span>
-                      <span className="text-[10px] text-[#A91079] font-medium block mt-0.5">{opt.time}</span>
-                    </button>
-                  ))}
+                {/* Catalog Search */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={catalogSearchQuery}
+                    onChange={(e) => setCatalogSearchQuery(e.target.value)}
+                    placeholder="Search catalog by title, department, or track..."
+                    className="w-full pl-8 pr-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-[#A91079] rounded-xl text-xs font-semibold text-slate-800 focus:outline-hidden transition"
+                  />
+                </div>
+
+                {/* Catalog List */}
+                <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                  {(() => {
+                    const currentSubs = currentTrack.gradeSubjects?.[addSubjectTargetGrade] || currentTrack.subjectIds || [];
+                    const curSet = new Set(currentSubs);
+                    const unassigned = allSubjects.filter((s) => {
+                      if (curSet.has(s.id)) return false;
+                      if (!catalogSearchQuery.trim()) return true;
+                      const q = catalogSearchQuery.toLowerCase().trim();
+                      const dept = departments.find((d) => d.id === s.department_id);
+                      return (
+                        s.name.toLowerCase().includes(q) ||
+                        (dept?.name || "").toLowerCase().includes(q) ||
+                        (dept?.code || "").toLowerCase().includes(q) ||
+                        (s.program_type || "").toLowerCase().includes(q)
+                      );
+                    });
+
+                    if (unassigned.length === 0) {
+                      return (
+                        <div className="py-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                          <p className="text-xs font-bold text-slate-600">No unassigned subjects match your query</p>
+                          <p className="text-[11px] text-slate-400 mt-1">
+                            All catalog learning areas are already assigned to Grade {addSubjectTargetGrade}, or none matched.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setAddSubjectMode("CREATE")}
+                            className="mt-3 px-3 py-1.5 bg-[#A91079] text-white rounded-xl text-xs font-bold shadow-2xs cursor-pointer hover:bg-[#8F0B66] transition inline-flex items-center gap-1.5"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Create New Learning Area</span>
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    return unassigned.map((sub) => {
+                      const dept = departments.find((d) => d.id === sub.department_id);
+                      const subPlacement = sub.preferred_placement || "SPECIALIZED";
+                      return (
+                        <div
+                          key={sub.id}
+                          className="p-3 bg-white rounded-2xl border border-slate-200 hover:border-[#A91079]/50 hover:shadow-xs transition flex items-center justify-between gap-3"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-xs text-slate-900 truncate">
+                                {sub.name}
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-[#F3E5F2] text-[#A91079] border border-[#E5CCE3]">
+                                {dept?.code || "DEPT"}
+                              </span>
+                              {sub.program_type && sub.program_type !== "ALL" && (
+                                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                  {sub.program_type}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-1 font-medium flex-wrap">
+                              <span>{dept?.name}</span>
+                              <span>•</span>
+                              <span>{sub.required_weekly_loads || 4} loads/wk ({sub.duration_minutes || 60}m)</span>
+                              <span>•</span>
+                              <span className="text-[#A91079] font-semibold">{subPlacement}</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={addingSubjectLoading}
+                            onClick={() => handleAttachExistingSubjectToTrack(sub, addSubjectTargetGrade)}
+                            className="px-3 py-1.5 bg-[#A91079] hover:bg-[#8F0B66] text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0 cursor-pointer disabled:opacity-50 shadow-2xs"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add to G{addSubjectTargetGrade}</span>
+                          </button>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+
+                <div className="flex justify-end pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddSubjectOpen(false)}
+                    className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold text-xs cursor-pointer"
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
+            ) : (
+              <form onSubmit={handleCreateNewSubjectForTrack} className="p-6 space-y-4 text-xs overflow-y-auto">
+                {/* Target Grade Selector */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                    <span>Target Grade Level</span>
+                    <span className="text-[10px] text-slate-400 font-normal">
+                      Assign to specific grade level
+                    </span>
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    {[7, 8, 9, 10].map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => setAddSubjectTargetGrade(g)}
+                        className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                          addSubjectTargetGrade === g
+                            ? "bg-[#A91079] text-white shadow-2xs font-extrabold"
+                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                        }`}
+                      >
+                        Grade {g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsAddSubjectOpen(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={addingSubjectLoading || !newSubName.trim()}
-                  className="px-4 py-2 rounded-xl bg-[#A91079] hover:bg-[#8F0B66] text-white font-bold shadow-2xs cursor-pointer disabled:opacity-40"
-                >
-                  {addingSubjectLoading
-                    ? "Adding to List..."
-                    : `Create & Add to Grade ${addSubjectTargetGrade}`}
-                </button>
-              </div>
-            </form>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Specialized Subject Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={newSubName}
+                    onChange={(e) => setNewSubName(e.target.value)}
+                    placeholder="e.g. Campus Journalism I, Robotics & Automation, Sports Conditioning"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-hidden focus:border-[#A91079]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Supervising Department</label>
+                  <select
+                    value={newSubDeptId}
+                    onChange={(e) => setNewSubDeptId(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-hidden focus:border-[#A91079] cursor-pointer"
+                  >
+                    {departments.map((d) => {
+                      const activeCount = teachers.filter((t) => t.department_id === d.id && t.status === "Active").length;
+                      return (
+                        <option key={d.id} value={d.id}>
+                          {d.name} ({d.code}) • {activeCount} {activeCount === 1 ? "teacher" : "teachers"} available
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Duration per Meeting</label>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <div className="inline-flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 shadow-2xs">
+                          <button
+                            type="button"
+                            disabled={newSubDuration <= 20}
+                            onClick={() => setNewSubDuration((prev) => Math.max(20, prev - 10))}
+                            className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-600 hover:bg-white hover:text-[#A91079] disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
+                            title="Decrease by 10 mins"
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                          </button>
+                          <span className="w-16 text-center text-xs font-bold text-[#2E0249] tabular-nums">
+                            {formatDuration(newSubDuration)}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={newSubDuration >= 240}
+                            onClick={() => setNewSubDuration((prev) => Math.min(240, prev + 10))}
+                            className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-600 hover:bg-white hover:text-[#A91079] disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
+                            title="Increase by 10 mins"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <span className="text-[11px] text-slate-500 font-semibold tabular-nums">
+                          ({newSubDuration} mins)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Weekly Frequency</label>
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((loads) => (
+                        <button
+                          key={loads}
+                          type="button"
+                          onClick={() => setNewSubLoads(loads)}
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                            newSubLoads === loads
+                              ? "bg-[#A91079] text-white shadow-2xs font-extrabold"
+                              : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                          }`}
+                        >
+                          {loads}x
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Preferred Placement */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1 flex items-center justify-between">
+                    <span>Preferred Placement (Daily Time Window)</span>
+                    <span className="text-[10px] text-slate-400 font-normal">
+                      Target periods for scheduler solver
+                    </span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {[
+                      { id: "SPECIALIZED", label: "Specialized Track (Extended)", time: "3:00–5:00 PM (P8–P9)", desc: "Dedicated extended day period for Special Programs (STE, SPJ, SPS, SPA)" },
+                      { id: "MORNING", label: "Morning Academic", time: "7:00–11:15 AM (P1–P4)", desc: "High cognitive demand core academic areas" },
+                      { id: "AFTERNOON", label: "Afternoon Applied", time: "12:00–3:00 PM (P5–P7)", desc: "Hands-on laboratories and physical workshops" },
+                      { id: "FLEXIBLE", label: "Flexible Placement", time: "Any Period (P1–P7)", desc: "Freely balanced by solver across standard periods" },
+                      { id: "MON_P1_LOCK", label: "Monday P1 Lock", time: "Mon 7:00–8:00 AM", desc: "DepEd Homeroom Guidance exclusive lock" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setNewSubPlacement(opt.id)}
+                        className={`p-2.5 rounded-xl text-left border transition cursor-pointer ${
+                          newSubPlacement === opt.id
+                            ? "bg-[#FDF2FA] border-[#A91079] ring-2 ring-[#A91079]/20"
+                            : "bg-slate-50 border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        <span className="text-xs font-bold text-slate-900 block">{opt.label}</span>
+                        <span className="text-[10px] text-[#A91079] font-bold block mt-0.5">{opt.time}</span>
+                        <span className="text-[10px] text-slate-500 block leading-tight mt-0.5 line-clamp-1">{opt.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddSubjectOpen(false)}
+                    className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={addingSubjectLoading || !newSubName.trim()}
+                    className="px-4 py-2 rounded-xl bg-[#A91079] hover:bg-[#8F0B66] text-white font-bold shadow-2xs cursor-pointer disabled:opacity-40"
+                  >
+                    {addingSubjectLoading
+                      ? "Adding to List..."
+                      : `Create & Add to Grade ${addSubjectTargetGrade}`}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

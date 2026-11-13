@@ -655,6 +655,7 @@ export const api = {
     required_weekly_loads?: number;
     duration_minutes?: number;
     preferred_placement?: string;
+    program_type?: string;
   }): Promise<any> {
     const res = await fetch(`${API_BASE}/subjects`, {
       method: "POST",

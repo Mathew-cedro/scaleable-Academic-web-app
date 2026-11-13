@@ -84,7 +84,8 @@ class Subject(SQLModel, table=True):
     grade_level: int = Field(index=True)
     required_weekly_loads: int = Field(default=4)  # 4 loads/week
     duration_minutes: int = Field(default=60)  # 30, 40, 50, or 60 minutes per load
-    preferred_placement: Optional[str] = Field(default=None)  # MORNING, AFTERNOON, MON_P1_LOCK, FLEXIBLE
+    preferred_placement: Optional[str] = Field(default=None)  # MORNING, AFTERNOON, MON_P1_LOCK, FLEXIBLE, SPECIALIZED
+    program_type: str = Field(default="ALL", index=True)  # "ALL" for Core/Common, or "STE", "SPJ", "SPS", "SPA"
 
 
 class ScheduleSlot(SQLModel, table=True):

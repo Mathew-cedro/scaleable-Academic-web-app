@@ -204,6 +204,7 @@ def seed_database():
                         department_id=dept_by_code[s["code"]],
                         grade_level=8,
                         required_weekly_loads=s["loads"],
+                        program_type="ALL",
                     )
                 )
             session.commit()

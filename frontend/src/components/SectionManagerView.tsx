@@ -562,16 +562,18 @@ export const SectionManagerView = ({
       />
 
       {/* Import Section Schedule via Excel/CSV Modal */}
-      <ImportSectionsExcelModal
-        isOpen={isImportExcelOpen}
-        onClose={() => setIsImportExcelOpen(false)}
-        sections={sections}
-        onImportComplete={() => {
-          if (onRefreshData) onRefreshData();
-          window.dispatchEvent(new CustomEvent("schedmaster_sections_refresh"));
-        }}
-        teachers={teachers}
-      />
+      {isImportExcelOpen && (
+        <ImportSectionsExcelModal
+          isOpen={isImportExcelOpen}
+          onClose={() => setIsImportExcelOpen(false)}
+          sections={sections}
+          onImportComplete={() => {
+            if (onRefreshData) onRefreshData();
+            window.dispatchEvent(new CustomEvent("schedmaster_sections_refresh"));
+          }}
+          teachers={teachers}
+        />
+      )}
     </div>
   );
 };

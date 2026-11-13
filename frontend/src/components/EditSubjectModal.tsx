@@ -30,6 +30,7 @@ export interface Subject {
   required_weekly_loads: number;
   duration_minutes?: number;
   preferred_placement?: string;
+  program_type?: string;
 }
 
 interface Props {
@@ -83,6 +84,13 @@ export const PLACEMENT_OPTIONS = [
     desc: "Freely scheduled by the solver to balance teacher daily workload and room distribution",
     icon: Shuffle,
   },
+  {
+    id: "SPECIALIZED",
+    title: "Specialized Track (Extended)",
+    timeWindow: "3:00 PM – 5:00 PM (Periods 8–9)",
+    desc: "Dedicated extended day period for Special Program offerings (STE, SPJ, SPS, SPA)",
+    icon: Sparkles,
+  },
 ];
 
 const getDefaultPlacement = (subName: string): string => {
@@ -124,6 +132,7 @@ export const EditSubjectModal = ({
   const [name, setName] = useState<string>("");
   const [departmentId, setDepartmentId] = useState<number>(1);
   const [gradeLevel, setGradeLevel] = useState<number>(7);
+  const [programType, setProgramType] = useState<string>("ALL");
   const [durationMinutes, setDurationMinutes] = useState<number>(60);
   const [requiredWeeklyLoads, setRequiredWeeklyLoads] = useState<number>(4);
   const [preferredPlacement, setPreferredPlacement] = useState<string>("FLEXIBLE");
@@ -136,6 +145,7 @@ export const EditSubjectModal = ({
       setName(subject.name || "");
       setDepartmentId(subject.department_id || (departments[0]?.id ?? 1));
       setGradeLevel(subject.grade_level || 7);
+      setProgramType(subject.program_type || "ALL");
       setDurationMinutes(
         currentAllotment?.duration_minutes ?? subject.duration_minutes ?? 60
       );
@@ -183,6 +193,7 @@ export const EditSubjectModal = ({
         duration_minutes: durationMinutes,
         required_weekly_loads: requiredWeeklyLoads,
         preferred_placement: preferredPlacement,
+        program_type: programType,
       });
 
       await onSubjectUpdated(
@@ -250,8 +261,8 @@ export const EditSubjectModal = ({
             />
           </div>
 
-          {/* Department & Grade Level Row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Department, Grade Level & Track Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Department */}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
@@ -286,6 +297,31 @@ export const EditSubjectModal = ({
                 <option value={8}>Grade 8</option>
                 <option value={9}>Grade 9</option>
                 <option value={10}>Grade 10</option>
+              </select>
+            </div>
+
+            {/* Curricular Track */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-[#A91079]" />
+                <span>Track / Program</span>
+              </label>
+              <select
+                value={programType}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setProgramType(val);
+                  if (val !== "ALL" && val !== "BEC" && val !== "REGULAR") {
+                    setPreferredPlacement("SPECIALIZED");
+                  }
+                }}
+                className="w-full px-3 py-2 bg-[#FAF5FA] border border-[#E5CCE3] focus:bg-white focus:border-[#A91079] rounded-xl text-xs font-semibold text-[#2E0249] focus:outline-hidden transition cursor-pointer"
+              >
+                <option value="ALL">Core / Common (All)</option>
+                <option value="STE">STE (Science & Tech)</option>
+                <option value="SPJ">SPJ (Journalism)</option>
+                <option value="SPS">SPS (Sports)</option>
+                <option value="SPA">SPA (Arts)</option>
               </select>
             </div>
           </div>

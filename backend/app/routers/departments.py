@@ -819,6 +819,7 @@ def create_subject(data: SubjectCreate, session: Session = Depends(get_session))
         required_weekly_loads=data.required_weekly_loads,
         duration_minutes=data.duration_minutes,
         preferred_placement=data.preferred_placement,
+        program_type=data.program_type or "ALL",
     )
     session.add(subject)
     session.commit()
@@ -855,6 +856,8 @@ def update_subject(subject_id: int, data: SubjectUpdate, session: Session = Depe
         subject.duration_minutes = data.duration_minutes
     if data.preferred_placement is not None:
         subject.preferred_placement = data.preferred_placement
+    if data.program_type is not None:
+        subject.program_type = data.program_type
 
     session.add(subject)
     session.commit()

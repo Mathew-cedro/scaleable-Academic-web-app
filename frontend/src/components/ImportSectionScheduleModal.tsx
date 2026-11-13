@@ -95,8 +95,6 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
     return sections.find((s) => s.id === selectedSectionId) || sections[0];
   }, [sections, selectedSectionId]);
 
-  if (!isOpen) return null;
-
   const handleDownloadTemplate = async () => {
     if (!currentSection) return;
     try {
@@ -220,6 +218,8 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
     if (previewSlots.length === 0) return 7;
     return Math.max(7, ...previewSlots.map((s) => s.period_index));
   }, [previewSlots]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">

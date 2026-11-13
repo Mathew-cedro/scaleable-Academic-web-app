@@ -101,12 +101,27 @@ def get_sec_periods(program_type: Optional[str], subject_id: int, total_speciali
     return [8, 9]
 
 
-def is_track_matching_subject(program_type: Optional[str], subject_name: str) -> bool:
+def is_track_matching_subject(
+    program_type: Optional[str],
+    subject_name: str,
+    subject_program_type: Optional[str] = None,
+) -> bool:
     """Returns True if the specialized subject belongs to the given curricular program track."""
     t_code = (program_type or "").upper().strip()
-    s_name = (subject_name or "").lower().strip()
     if t_code in ("BEC", "REGULAR", "STANDARD", "GENERAL"):
         return False
+    aliases = get_track_aliases(t_code)
+
+    # 1. First-class database entity check
+    if subject_program_type:
+        s_ptype = subject_program_type.upper().strip()
+        if s_ptype in aliases:
+            return True
+        if s_ptype not in ("ALL", "BEC", "REGULAR", ""):
+            return False
+
+    # 2. Keyword fallback for seeded / legacy records
+    s_name = (subject_name or "").lower().strip()
     if t_code in ("SPS", "SPORTS"):
         return any(k in s_name for k in ["sport", "athlet", "fitness", "kinesiology", "pe", "train"])
     if t_code in ("STE", "STEM"):
@@ -254,19 +269,39 @@ def generate_master_schedule(
 
             if matched_ids:
                 allowed_ids = set(matched_ids)
-                matched = [s for s in academic_subjects if s.id in allowed_ids]
+                # Merge in any subjects from DB whose program_type matches this section's track
+                db_track_sub_ids = {
+                    s.id for s in academic_subjects
+                    if (getattr(s, "program_type", None) or "").upper().strip() in aliases
+                    and (s.grade_level == sec_grade or s.grade_level == 0)
+                }
+                combined_allowed = allowed_ids | db_track_sub_ids
+                matched = [s for s in academic_subjects if s.id in combined_allowed]
                 if matched:
                     return matched
 
         # If no track subjects matched, match subjects for this section's grade level or core standard subjects
         if p_type in ("BEC", "REGULAR"):
-            core_matched = [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
-            return core_matched if core_matched else academic_subjects
+            core_matched = [
+                s for s in academic_subjects
+                if (getattr(s, "program_type", None) or "ALL").upper().strip() in ("ALL", "BEC", "REGULAR", "")
+                and (s.id in (1, 2, 3, 4, 5, 6, 7, 8) or s.grade_level == sec_grade or s.grade_level in (0, 8))
+            ]
+            return core_matched if core_matched else [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
 
         special_matched = [
             s for s in academic_subjects
-            if s.id in (1, 2, 3, 4, 5, 6, 7, 8)
-            or (is_specialized_subject(p_type, s.id) and (s.grade_level == sec_grade or s.grade_level == 0) and is_track_matching_subject(p_type, s.name))
+            if (
+                (getattr(s, "program_type", None) or "ALL").upper().strip() in ("ALL", "BEC", "REGULAR", "")
+                and (s.id in (1, 2, 3, 4, 5, 6, 7, 8) or s.grade_level == sec_grade or s.grade_level in (0, 8))
+            ) or (
+                (
+                    (getattr(s, "program_type", None) or "").upper().strip() in aliases
+                    or is_specialized_subject(p_type, s.id)
+                )
+                and (s.grade_level == sec_grade or s.grade_level == 0)
+                and is_track_matching_subject(p_type, s.name, getattr(s, "program_type", None))
+            )
         ]
         return special_matched if special_matched else [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
 
@@ -876,7 +911,13 @@ def repair_schedule(
 
             if matched_ids:
                 allowed_ids = set(matched_ids)
-                matched = [s for s in academic_subjects if s.id in allowed_ids]
+                db_track_sub_ids = {
+                    s.id for s in academic_subjects
+                    if (getattr(s, "program_type", None) or "").upper().strip() in aliases
+                    and (s.grade_level == sec_grade or s.grade_level == 0)
+                }
+                combined_allowed = allowed_ids | db_track_sub_ids
+                matched = [s for s in academic_subjects if s.id in combined_allowed]
                 if matched:
                     return matched
 
@@ -886,18 +927,34 @@ def repair_schedule(
             grade_new_special = [
                 s for s in academic_subjects
                 if s.id not in existing_sub_ids
-                and is_specialized_subject(p_type, s.id)
+                and (
+                    (getattr(s, "program_type", None) or "").upper().strip() in aliases
+                    or is_specialized_subject(p_type, s.id)
+                )
                 and (s.grade_level == sec_grade or s.grade_level == 0)
-                and is_track_matching_subject(p_type, s.name)
+                and is_track_matching_subject(p_type, s.name, getattr(s, "program_type", None))
             ]
             return [s for s in academic_subjects if s.id in existing_sub_ids] + grade_new_special
         if p_type in ("BEC", "REGULAR"):
-            core_matched = [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
-            return core_matched if core_matched else academic_subjects
+            core_matched = [
+                s for s in academic_subjects
+                if (getattr(s, "program_type", None) or "ALL").upper().strip() in ("ALL", "BEC", "REGULAR", "")
+                and (s.id in (1, 2, 3, 4, 5, 6, 7, 8) or s.grade_level == sec_grade or s.grade_level in (0, 8))
+            ]
+            return core_matched if core_matched else [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
         special_matched = [
             s for s in academic_subjects
-            if s.id in (1, 2, 3, 4, 5, 6, 7, 8)
-            or (is_specialized_subject(p_type, s.id) and (s.grade_level == sec_grade or s.grade_level == 0) and is_track_matching_subject(p_type, s.name))
+            if (
+                (getattr(s, "program_type", None) or "ALL").upper().strip() in ("ALL", "BEC", "REGULAR", "")
+                and (s.id in (1, 2, 3, 4, 5, 6, 7, 8) or s.grade_level == sec_grade or s.grade_level in (0, 8))
+            ) or (
+                (
+                    (getattr(s, "program_type", None) or "").upper().strip() in aliases
+                    or is_specialized_subject(p_type, s.id)
+                )
+                and (s.grade_level == sec_grade or s.grade_level == 0)
+                and is_track_matching_subject(p_type, s.name, getattr(s, "program_type", None))
+            )
         ]
         return special_matched if special_matched else [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
 
@@ -994,8 +1051,8 @@ def repair_schedule(
             # Teacher is absent: cannot teach this slot
             if key in X:
                 model.Add(X[key] == 0)
-        elif orig.section_id not in changed_sections and (orig.subject_id and subject_map.get(orig.subject_id) and subject_map[orig.subject_id].department_id not in affected_dept_ids):
-            # Unaffected departments strictly pinned to eliminate combinatorial explosion
+        elif orig.section_id not in changed_sections and orig.teacher_id not in absent_teacher_ids:
+            # Unaffected sections strictly pinned to eliminate combinatorial explosion
             if key in X:
                 model.Add(X[key] == 1)
         else:
@@ -1185,12 +1242,12 @@ def repair_schedule(
 
     # Solve repair model
     solver = cp_model.CpSolver()
-    solve_timeout = float(config.max_solve_time_seconds) if config and config.max_solve_time_seconds else 15.0
+    solve_timeout = float(config.max_solve_time_seconds) if config and config.max_solve_time_seconds else 30.0
     solver.parameters.max_time_in_seconds = solve_timeout
     solver.parameters.num_search_workers = max(4, min(8, os.cpu_count() or 4))
     status = solver.Solve(model)
-
     latency_ms = (time.perf_counter() - start_time) * 1000.0
+    print(f"[REPAIR] CP-SAT Status: {solver.StatusName(status)} ({status}) in {latency_ms:.1f}ms")
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return ScheduleOperationResponse(

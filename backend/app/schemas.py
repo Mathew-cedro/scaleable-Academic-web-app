@@ -99,6 +99,7 @@ class SubjectRead(BaseModel):
     required_weekly_loads: int
     duration_minutes: int = 60
     preferred_placement: Optional[str] = None
+    program_type: Optional[str] = "ALL"
 
 
 class SubjectCreate(BaseModel):
@@ -108,6 +109,7 @@ class SubjectCreate(BaseModel):
     required_weekly_loads: int = 4
     duration_minutes: int = Field(default=60, ge=20, le=240)
     preferred_placement: Optional[str] = None
+    program_type: Optional[str] = "ALL"
 
 
 class SubjectUpdate(BaseModel):
@@ -117,6 +119,7 @@ class SubjectUpdate(BaseModel):
     required_weekly_loads: Optional[int] = None
     duration_minutes: Optional[int] = Field(default=None, ge=20, le=240)
     preferred_placement: Optional[str] = None
+    program_type: Optional[str] = None
 
 
 # --- Schedule Slot Schemas ---
