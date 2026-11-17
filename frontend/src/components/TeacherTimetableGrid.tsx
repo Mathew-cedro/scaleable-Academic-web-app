@@ -11,9 +11,7 @@ import {
   ShieldCheck,
   Search,
   Plus,
-  FileSpreadsheet,
 } from "lucide-react";
-import { api } from "../api/client";
 import { evaluateSlotConflict } from "../utils/scheduleConflictChecker";
 import { useLanguage } from "../context/LanguageContext";
 
@@ -92,26 +90,6 @@ export const TeacherTimetableGrid = ({
   const { t, isTagalog } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDeptId, setSelectedDeptId] = useState<number | "ALL">("ALL");
-  const [isExportingSF7, setIsExportingSF7] = useState(false);
-
-  const handleExportSF7 = async () => {
-    setIsExportingSF7(true);
-    try {
-      const blob = await api.exportSF7Excel();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "SF7_PGCHS_School_Personnel_Assignment_2026-2027.xlsx";
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err: any) {
-      alert("Failed to export DepEd SF-7: " + (err.message || "Unknown error"));
-    } finally {
-      setIsExportingSF7(false);
-    }
-  };
 
   const currentTeacher =
     teachers.find((t) => t.id === selectedTeacherId) || teachers[0];
@@ -378,16 +356,6 @@ export const TeacherTimetableGrid = ({
                 <span>{isTagalog ? "+ Magdagdag ng Guro" : "+ Add Faculty"}</span>
               </button>
             )}
-            <button
-              type="button"
-              onClick={handleExportSF7}
-              disabled={isExportingSF7}
-              className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              title={t.common.exportSF7}
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>{isExportingSF7 ? (isTagalog ? "Ipinoproseso..." : "Exporting SF-7...") : t.common.exportSF7}</span>
-            </button>
             <button
               type="button"
               onClick={() => window.print()}

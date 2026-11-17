@@ -8,9 +8,7 @@ import {
   Plus,
   ShieldCheck,
   Printer,
-  FileSpreadsheet,
 } from "lucide-react";
-import { api } from "../api/client";
 import { evaluateSlotConflict } from "../utils/scheduleConflictChecker";
 
 import { getPeriodHeaders } from "../utils/bellSchedule";
@@ -87,26 +85,6 @@ export const MasterTimetableGrid = ({
   const [gradeFilter, setGradeFilter] = useState<number | "ALL">("ALL");
   const [conflictFilter, setConflictFilter] = useState<"ALL" | "ANY_CONFLICT" | "ROOM_CLASH" | "TEACHER_CLASH">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
-  const [isExportingSF7, setIsExportingSF7] = useState(false);
-
-  const handleExportSF7 = async () => {
-    setIsExportingSF7(true);
-    try {
-      const blob = await api.exportSF7Excel();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "SF7_PGCHS_School_Personnel_Assignment_2026-2027.xlsx";
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err: any) {
-      alert("Failed to export DepEd SF-7: " + (err.message || "Unknown error"));
-    } finally {
-      setIsExportingSF7(false);
-    }
-  };
 
   // Grade levels available
   const gradeLevels = useMemo(() => {
@@ -428,16 +406,6 @@ export const MasterTimetableGrid = ({
                 </button>
               </div>
             )}
-            <button
-              type="button"
-              onClick={handleExportSF7}
-              disabled={isExportingSF7}
-              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold shadow-2xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50 no-print"
-              title="Export official DepEd School Form 7 (School Personnel Assignment List & Basic Profile)"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>{isExportingSF7 ? "Exporting SF-7..." : "Export SF-7 (.xlsx)"}</span>
-            </button>
             <button
               type="button"
               onClick={() => window.print()}

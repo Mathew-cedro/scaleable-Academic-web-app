@@ -105,30 +105,10 @@ export const ClassTimetableGrid = ({
   const [adviserSearch, setAdviserSearch] = useState("");
   const [isUpdatingAdviser, setIsUpdatingAdviser] = useState(false);
 
-  // Export Docx & SF-7 Modal State
+  // Export Docx Modal State
   const [isExportDocxModalOpen, setIsExportDocxModalOpen] = useState(false);
   const [isExportingDocx, setIsExportingDocx] = useState(false);
-  const [isExportingSF7, setIsExportingSF7] = useState(false);
   const [isImportScheduleExcelOpen, setIsImportScheduleExcelOpen] = useState(false);
-
-  const handleExportSF7 = async () => {
-    setIsExportingSF7(true);
-    try {
-      const blob = await api.exportSF7Excel();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "SF7_PGCHS_School_Personnel_Assignment_2026-2027.xlsx";
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err: any) {
-      alert("Failed to export DepEd SF-7: " + (err.message || "Unknown error"));
-    } finally {
-      setIsExportingSF7(false);
-    }
-  };
   const [customBreaks, setCustomBreaks] = useState<CustomBreakTimings>(loadCustomBreakTimings());
 
   useEffect(() => {
@@ -704,16 +684,6 @@ export const ClassTimetableGrid = ({
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
               <span>{isTagalog ? "Mag-import ng Talaorasan (Excel)" : "Import Schedule (Excel)"}</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleExportSF7}
-              disabled={isExportingSF7}
-              className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold transition shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              title={t.common.exportSF7}
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>{isExportingSF7 ? (isTagalog ? "Ipinoproseso..." : "Exporting SF-7...") : t.common.exportSF7}</span>
             </button>
             <button
               type="button"

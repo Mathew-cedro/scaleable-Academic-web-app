@@ -922,14 +922,6 @@ export const api = {
     return res.json();
   },
 
-  async exportSF7Excel(): Promise<Blob> {
-    const res = await fetch(`${API_BASE}/schedule/export/sf7`);
-    if (!res.ok) {
-      throw new Error(await parseErrorMessage(res, "Failed to export DepEd SF-7"));
-    }
-    return res.blob();
-  },
-
   async getCSForm6Preview(
     teacherId: number,
     startDate: string,

@@ -512,10 +512,10 @@ export const SectionManagerView = ({
                   <button
                     onClick={() => onViewClassTimetable(sec.id)}
                     className="px-3 py-1.5 rounded-xl text-xs font-bold text-[#A91079] bg-[#FDF2FA] hover:bg-[#F3E5F2] border border-[#E5CCE3] transition flex items-center gap-1 cursor-pointer"
-                    title="View Form SF-7 Timetable"
+                    title="View Class Timetable"
                   >
                     <Calendar className="w-3.5 h-3.5" />
-                    <span>SF-7 Timetable</span>
+                    <span>Class Timetable</span>
                     <ArrowRight className="w-3 h-3 ml-0.5" />
                   </button>
 

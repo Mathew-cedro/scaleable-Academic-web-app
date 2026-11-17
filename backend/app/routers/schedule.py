@@ -10,7 +10,18 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
 from app.services.docx_exporter import generate_class_schedule_document
-from app.services.sf7_exporter import generate_deped_sf7_workbook, PERIOD_TIMES
+
+PERIOD_TIMES = {
+    1: "7:00 AM - 8:00 AM",
+    2: "8:00 AM - 9:00 AM",
+    3: "9:20 AM - 10:20 AM",
+    4: "10:20 AM - 11:20 AM",
+    5: "12:00 PM - 1:00 PM",
+    6: "1:00 PM - 2:00 PM",
+    7: "2:00 PM - 3:00 PM",
+    8: "3:00 PM - 4:00 PM",
+    9: "4:00 PM - 5:00 PM",
+}
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
@@ -1064,23 +1075,6 @@ def export_section_class_program_docx(
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
-
-@router.get("/export/sf7")
-def export_deped_sf7_excel(
-    session: Session = Depends(get_session),
-):
-    """
-    Export DepEd School Form 7 (SF-7) School Personnel Assignment List and Basic Profile.
-    Generates a production-grade Excel workbook with institutional metadata, faculty contact minutes,
-    RA 4670 6-hour compliance checks, DO 002 ancillary duty tracking, and master schedule matrix.
-    """
-    buf = generate_deped_sf7_workbook(session)
-    filename = "SF7_PGCHS_School_Personnel_Assignment_2026-2027.xlsx"
-    return Response(
-        content=buf.getvalue(),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
 
 
 @router.get("/leave-filing/preview/{teacher_id}", response_model=CSForm6PreviewResponse)

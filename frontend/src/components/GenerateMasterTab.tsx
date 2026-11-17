@@ -3258,7 +3258,7 @@ export const GenerateMasterTab = ({
                 >
                   <div className="flex items-center gap-2">
                     <GraduationCap className="w-4 h-4 text-amber-600" />
-                    <span>Class Program (SF-7)</span>
+                    <span>Class Program</span>
                   </div>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#A91079] transition-transform group-hover:translate-x-0.5" />
                 </button>

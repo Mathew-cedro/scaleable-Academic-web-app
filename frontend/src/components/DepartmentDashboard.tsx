@@ -17,7 +17,6 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
-  FileSpreadsheet,
 } from "lucide-react";
 import { SubstitutionDispatcherModal } from "./SubstitutionDispatcherModal";
 import { CSForm6LeaveModal } from "./CSForm6LeaveModal";
@@ -107,26 +106,6 @@ export const DepartmentDashboard = ({
   const [showScheduleMatrix, setShowScheduleMatrix] = useState(false);
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [leaveSelectedTeacher, setLeaveSelectedTeacher] = useState<Teacher | null>(null);
-  const [isExportingSF7, setIsExportingSF7] = useState(false);
-
-  const handleExportSF7 = async () => {
-    setIsExportingSF7(true);
-    try {
-      const blob = await api.exportSF7Excel();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "SF7_PGCHS_School_Personnel_Assignment_2026-2027.xlsx";
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err: any) {
-      alert("Failed to export DepEd SF-7: " + (err.message || "Unknown error"));
-    } finally {
-      setIsExportingSF7(false);
-    }
-  };
 
   useEffect(() => {
     api.getLatestDeployment().then(setLatestDeployment).catch(() => {});
@@ -483,16 +462,6 @@ export const DepartmentDashboard = ({
             >
               <FileText className="w-3.5 h-3.5 text-[#A91079]" />
               <span>{t.department.fileLeave}</span>
-            </button>
-
-            <button
-              onClick={handleExportSF7}
-              disabled={isExportingSF7}
-              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs disabled:opacity-50"
-              title={t.common.exportSF7}
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>{isExportingSF7 ? (isTagalog ? "Ipinoproseso..." : "Exporting...") : t.department.exportSF7Btn}</span>
             </button>
 
             {onAddTeacher && (
