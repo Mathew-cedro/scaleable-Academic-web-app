@@ -22,14 +22,12 @@ PERIOD_TIMES = {
     8: "3:00 PM - 4:00 PM",
     9: "4:00 PM - 5:00 PM",
 }
-from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from app.database import get_session
 from app.models import (
     Department,
     LeaveApplication,
-    LeaveType,
     SavedSchedule,
     ScheduleDeployment,
     ScheduleSlot,
@@ -58,7 +56,6 @@ from app.schemas import (
     ScheduleDeployRequest,
     ScheduleDeployResponse,
     ScheduleOperationResponse,
-    ScheduleSlotRead,
     SlotAssignRequest,
 )
 from app.services.cp_solver import (

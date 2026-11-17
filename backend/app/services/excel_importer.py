@@ -748,35 +748,6 @@ def persist_section_schedule_excel(
 # =============================================================================
 # BACKWARD-COMPATIBLE SECTION ROSTER IMPORTER (LEGACY HANDLERS)
 # =============================================================================
-def extract_grade_level(name: str, grade_val: Any = None) -> int:
-    if grade_val is not None and str(grade_val).strip():
-        s = str(grade_val).strip().lower()
-        m = re.search(r"\b(7|8|9|10)\b", s)
-        if m:
-            return int(m.group(1))
-    if name:
-        m = re.search(r"(?:grade|gr|g)\s*[-_]?\s*(7|8|9|10)\b", name.lower())
-        if m:
-            return int(m.group(1))
-        m2 = re.search(r"\b(7|8|9|10)\s*[-_]", name.lower())
-        if m2:
-            return int(m2.group(1))
-    return 7
-
-
-def normalize_program_track(track_val: Any, name: str) -> str:
-    text = (str(track_val or "") + " " + str(name or "")).upper()
-    if "STE" in text or "SCIENCE" in text or "STEM" in text:
-        return "STE"
-    if "SPS" in text or "SPORT" in text:
-        return "SPS"
-    if "SPA" in text or "ARTS" in text:
-        return "SPA"
-    if "SPJ" in text or "JOURNAL" in text:
-        return "SPJ"
-    return "BEC"
-
-
 def generate_sections_excel_template() -> io.BytesIO:
     """Legacy section roster template generation."""
     wb = openpyxl.Workbook()

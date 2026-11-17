@@ -4,7 +4,7 @@ Calculates structural disruption and tracks displaced/reassigned classes
 during fault-tolerant dynamic schedule repair.
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List
 from app.models import ScheduleSlot, Section, Subject, Teacher
 from app.schemas import DiffResult, SlotDiffItem
 

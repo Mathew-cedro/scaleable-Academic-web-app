@@ -15,7 +15,7 @@ import time
 from typing import Dict, List, Optional
 import jwt
 from fastapi import APIRouter, Header, HTTPException, Query, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 

@@ -3,6 +3,7 @@ Google OR-Tools CP-SAT Master Schedule Generator & Dynamic Repair Engine.
 Enforces DepEd Order No. 009, s. 2026 (Key Stage 3) & RA 4670 Workload Limits.
 """
 
+import logging
 import os
 import time
 from typing import Dict, List, Optional, Tuple
@@ -11,7 +12,6 @@ from sqlmodel import Session, select
 
 from app.models import (
     Department,
-    ProgramType,
     ScheduleSlot,
     Section,
     Subject,
@@ -19,12 +19,13 @@ from app.models import (
     TeacherStatus,
 )
 from app.schemas import (
-    DiffResult,
     GenerateScheduleRequest,
     ReassignTeacherSlotsRequest,
     ScheduleOperationResponse,
     ScheduleSlotRead,
 )
+
+logger = logging.getLogger(__name__)
 from app.services.diff_engine import compute_schedule_diff
 from app.services.compliance_reporter import generate_compliance_report
 
@@ -1008,6 +1009,11 @@ def repair_schedule(
             if sub:
                 changed_departments.add(sub.department_id)
 
+    # Any section that has classes taught by absent teachers is also affected
+    for slot in original_slots:
+        if slot.teacher_id in absent_teacher_ids:
+            changed_sections.add(slot.section_id)
+
     affected_dept_ids = {t.department_id for t in absent_teachers} | changed_departments
 
     model = cp_model.CpModel()
@@ -1047,12 +1053,18 @@ def repair_schedule(
     # Map original flexible assignments
     for orig in flexible_academic_slots:
         key = (orig.teacher_id, orig.section_id, orig.subject_id, orig.day_of_week, orig.period_index)
+        sub = subject_map.get(orig.subject_id)
+        is_affected = (
+            orig.teacher_id in absent_teacher_ids
+            or orig.section_id in changed_sections
+            or (sub and sub.department_id in affected_dept_ids)
+        )
         if orig.teacher_id in absent_teacher_ids:
             # Teacher is absent: cannot teach this slot
             if key in X:
                 model.Add(X[key] == 0)
-        elif orig.section_id not in changed_sections and orig.teacher_id not in absent_teacher_ids:
-            # Unaffected sections strictly pinned to eliminate combinatorial explosion
+        elif not is_affected:
+            # Unaffected sections & departments strictly pinned to eliminate combinatorial explosion
             if key in X:
                 model.Add(X[key] == 1)
         else:
@@ -1247,7 +1259,7 @@ def repair_schedule(
     solver.parameters.num_search_workers = max(4, min(8, os.cpu_count() or 4))
     status = solver.Solve(model)
     latency_ms = (time.perf_counter() - start_time) * 1000.0
-    print(f"[REPAIR] CP-SAT Status: {solver.StatusName(status)} ({status}) in {latency_ms:.1f}ms")
+    logger.info(f"[REPAIR] CP-SAT Status: {solver.StatusName(status)} ({status}) in {latency_ms:.1f}ms")
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return ScheduleOperationResponse(

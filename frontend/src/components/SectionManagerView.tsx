@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { BatchSectionSetupModal } from "./BatchSectionSetupModal";
 import { AddSpecialTrackModal } from "./AddSpecialTrackModal";
-import { ImportSectionsExcelModal } from "./ImportSectionsExcelModal";
+import { ImportSectionScheduleModal } from "./ImportSectionScheduleModal";
 import {
   loadModularTracks,
   saveModularTracks,
@@ -563,7 +563,7 @@ export const SectionManagerView = ({
 
       {/* Import Section Schedule via Excel/CSV Modal */}
       {isImportExcelOpen && (
-        <ImportSectionsExcelModal
+        <ImportSectionScheduleModal
           isOpen={isImportExcelOpen}
           onClose={() => setIsImportExcelOpen(false)}
           sections={sections}

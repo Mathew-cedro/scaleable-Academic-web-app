@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 import docx
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
+from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml import parse_xml, OxmlElement
 from docx.oxml.ns import nsdecls, qn
 
@@ -20,18 +20,6 @@ from app.models import Section, ScheduleSlot, Teacher, Subject
 DEFAULT_TEMPLATE_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "templates", "class_program_template.docx"
 )
-
-
-def replace_text_in_paragraph(paragraph, replacements: Dict[str, str]):
-    """Replaces placeholders in a paragraph while preserving basic formatting."""
-    full_text = paragraph.text
-    replaced = False
-    for key, val in replacements.items():
-        if key in full_text:
-            full_text = full_text.replace(key, str(val))
-            replaced = True
-    if replaced:
-        paragraph.text = full_text
 
 
 def replace_in_p(p, find_regex: str, replacement: str, count: int = 0):
