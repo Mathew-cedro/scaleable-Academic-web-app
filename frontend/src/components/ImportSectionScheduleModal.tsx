@@ -13,6 +13,8 @@ import {
   Layers,
   ChevronDown,
   Edit3,
+  Plus,
+  Sparkles,
 } from "lucide-react";
 import { api } from "../api/client";
 
@@ -22,6 +24,7 @@ interface SectionOption {
   grade_level?: number;
   gradeLevel?: number;
   program_type?: string;
+  room_number?: string;
 }
 
 interface ParsedSlotItem {
@@ -64,10 +67,19 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
   initialSectionId,
   teachers,
 }) => {
+  const [localSections, setLocalSections] = useState<SectionOption[]>(sections);
   const [selectedSectionId, setSelectedSectionId] = useState<number>(() => {
     if (initialSectionId) return initialSectionId;
     return sections.length > 0 ? sections[0].id : 1;
   });
+
+  const [sectionOption, setSectionOption] = useState<"EXISTING" | "NEW">("EXISTING");
+  const [newSectionName, setNewSectionName] = useState("");
+  const [newSectionGrade, setNewSectionGrade] = useState<number>(7);
+  const [newSectionTrack, setNewSectionTrack] = useState<string>("BEC");
+  const [newSectionRoom, setNewSectionRoom] = useState<string>("");
+  const [newSectionAdviserId, setNewSectionAdviserId] = useState<number | "">("");
+  const [creatingSection, setCreatingSection] = useState(false);
 
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -94,8 +106,9 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Synchronize initialSectionId when modal opens
+  // Synchronize initialSectionId and sections when modal opens or props change
   useEffect(() => {
+    setLocalSections(sections);
     if (initialSectionId) {
       setSelectedSectionId(initialSectionId);
     } else if (sections.length > 0) {
@@ -104,15 +117,72 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
   }, [initialSectionId, isOpen, sections]);
 
   const currentSection = useMemo(() => {
-    return sections.find((s) => s.id === selectedSectionId) || sections[0];
-  }, [sections, selectedSectionId]);
+    return localSections.find((s) => s.id === selectedSectionId) || localSections[0];
+  }, [localSections, selectedSectionId]);
+
+  const handleCreateNewSection = async (): Promise<number | null> => {
+    const trimmed = newSectionName.trim();
+    if (!trimmed) {
+      setError("Please enter a section name for the new section.");
+      return null;
+    }
+    try {
+      setCreatingSection(true);
+      setError(null);
+      const created = await api.createSection({
+        name: trimmed,
+        grade_level: Number(newSectionGrade),
+        program_type: newSectionTrack,
+        room_number: newSectionRoom.trim() || `Room ${newSectionGrade}01`,
+        adviser_id: newSectionAdviserId ? Number(newSectionAdviserId) : null,
+      });
+
+      const newSecOption: SectionOption = {
+        id: created.id,
+        name: created.name,
+        grade_level: created.grade_level,
+        program_type: created.program_type,
+        room_number: created.room_number,
+      };
+
+      setLocalSections((prev) => [...prev, newSecOption]);
+      setSelectedSectionId(created.id);
+      setSectionOption("EXISTING");
+      setSuccessMessage(`Section "${created.name}" created successfully! Now ready to import its schedule.`);
+      window.dispatchEvent(new CustomEvent("schedmaster_sections_refresh"));
+      return created.id;
+    } catch (err: any) {
+      setError(err?.message || "Failed to create new section.");
+      return null;
+    } finally {
+      setCreatingSection(false);
+    }
+  };
 
   const handleDownloadTemplate = async () => {
-    if (!currentSection) return;
+    let targetSec = currentSection;
+
+    if (sectionOption === "NEW") {
+      const trimmed = newSectionName.trim();
+      if (!trimmed) {
+        setError("Please enter a Section Name first to generate and download its pre-filled template, or switch to Pre-existing Section.");
+        return;
+      }
+      const createdId = await handleCreateNewSection();
+      if (!createdId) return;
+      targetSec = localSections.find((s) => s.id === createdId) || {
+        id: createdId,
+        name: trimmed,
+        grade_level: newSectionGrade,
+        program_type: newSectionTrack,
+      };
+    }
+
+    if (!targetSec) return;
     try {
       setDownloadingTemplate(true);
       setError(null);
-      await api.downloadSectionScheduleTemplateExcel(currentSection.id, currentSection.name);
+      await api.downloadSectionScheduleTemplateExcel(targetSec.id, targetSec.name);
     } catch (err: any) {
       setError(err?.message || "Failed to download schedule template.");
     } finally {
@@ -127,13 +197,26 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
       return;
     }
 
+    let targetId = selectedSectionId;
+
+    if (sectionOption === "NEW") {
+      const trimmed = newSectionName.trim();
+      if (!trimmed) {
+        setError("Please enter a Section Name for the new section before uploading its schedule.");
+        return;
+      }
+      const createdId = await handleCreateNewSection();
+      if (!createdId) return;
+      targetId = createdId;
+    }
+
     setFile(selectedFile);
     setError(null);
     setSuccessMessage(null);
     setLoading(true);
 
     try {
-      const data = await api.previewSectionScheduleExcel(selectedSectionId, selectedFile);
+      const data = await api.previewSectionScheduleExcel(targetId, selectedFile);
       setPreviewSlots(data.slots || []);
       setLayoutDetected(data.layout_detected || "GRID_MATRIX");
       setAvailableSheets(data.available_sheets || []);
@@ -305,14 +388,11 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
             </div>
             <div>
               <h2 className="text-base font-bold flex items-center gap-2">
-                <span>Import Section Weekly Timetable</span>
+                <span>Import Section</span>
                 <span className="text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-200 border border-emerald-400/30">
                   Excel / CSV
                 </span>
               </h2>
-              <p className="text-xs text-purple-200 mt-0.5">
-                Upload and validate a weekly schedule matrix for a specific section (DepEd Key Stage 3 compliant).
-              </p>
             </div>
           </div>
           <button
@@ -325,45 +405,193 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
 
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
-          {/* Section Selection & Template Download Banner */}
-          <div className="bg-[#FAF5FA] border border-[#E5CCE3] p-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex-1 space-y-1">
-              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                Target Section for Schedule Import
-              </label>
-              <div className="relative inline-block w-full max-w-md">
-                <select
-                  value={selectedSectionId}
-                  onChange={(e) => {
-                    setSelectedSectionId(Number(e.target.value));
-                    handleReset();
-                  }}
-                  disabled={loading || importing}
-                  className="w-full bg-white border border-[#D9B8D7] text-slate-900 text-sm font-semibold rounded-lg px-3 py-2 pr-8 shadow-2xs focus:ring-2 focus:ring-[#A91079] focus:outline-hidden appearance-none cursor-pointer"
-                >
-                  {sections.map((sec) => (
-                    <option key={sec.id} value={sec.id}>
-                      {sec.name} ({sec.program_type || "BEC"} Grade {sec.grade_level || sec.gradeLevel || 7})
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
+          {/* Section Selection & Configuration Card: Pre-existing vs New Section */}
+          <div className="bg-[#FAF5FA] border border-[#E5CCE3] p-4 rounded-xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#F0D5ED]">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider shrink-0">
+                  Section Option:
+                </label>
+                <div className="relative inline-block w-60">
+                  <select
+                    value={sectionOption}
+                    onChange={(e) => {
+                      const opt = e.target.value as "EXISTING" | "NEW";
+                      setSectionOption(opt);
+                      handleReset();
+                    }}
+                    disabled={loading || importing}
+                    className="w-full bg-white border border-[#D9B8D7] text-slate-900 text-xs font-bold rounded-lg px-3 py-2 pr-8 shadow-2xs focus:ring-2 focus:ring-[#A91079] focus:outline-hidden appearance-none cursor-pointer"
+                  >
+                    <option value="EXISTING">Pre-existing Section</option>
+                    <option value="NEW">New Section</option>
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                </div>
               </div>
+
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                disabled={downloadingTemplate || loading}
+                className="px-3.5 py-2 bg-white hover:bg-purple-50 text-[#A91079] border border-[#E5CCE3] rounded-lg text-xs font-semibold shadow-2xs flex items-center gap-2 transition cursor-pointer self-start sm:self-auto"
+                title="Download template pre-formatted for this section"
+              >
+                {downloadingTemplate ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#A91079]" />
+                ) : (
+                  <Download className="w-3.5 h-3.5 text-[#A91079]" />
+                )}
+                <span>Download Template (.xlsx)</span>
+              </button>
             </div>
 
-            <button
-              type="button"
-              onClick={handleDownloadTemplate}
-              disabled={downloadingTemplate || loading}
-              className="px-4 py-2 bg-white hover:bg-purple-50 text-[#A91079] border border-[#E5CCE3] rounded-lg text-xs font-semibold shadow-2xs flex items-center gap-2 transition cursor-pointer self-start md:self-auto"
-            >
-              {downloadingTemplate ? (
-                <RefreshCw className="w-4 h-4 animate-spin text-[#A91079]" />
-              ) : (
-                <Download className="w-4 h-4 text-[#A91079]" />
-              )}
-              <span>Download Pre-filled Template (.xlsx)</span>
-            </button>
+            {sectionOption === "EXISTING" ? (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="text-xs font-semibold text-slate-700 sm:w-48 shrink-0">
+                  Select Pre-existing Section:
+                </label>
+                <div className="relative flex-1 max-w-lg">
+                  <select
+                    value={selectedSectionId}
+                    onChange={(e) => {
+                      setSelectedSectionId(Number(e.target.value));
+                      handleReset();
+                    }}
+                    disabled={loading || importing}
+                    className="w-full bg-white border border-[#D9B8D7] text-slate-900 text-sm font-semibold rounded-lg px-3 py-2 pr-8 shadow-2xs focus:ring-2 focus:ring-[#A91079] focus:outline-hidden appearance-none cursor-pointer"
+                  >
+                    {localSections.map((sec) => (
+                      <option key={sec.id} value={sec.id}>
+                        {sec.name} ({sec.program_type || "BEC"} Grade {sec.grade_level || sec.gradeLevel || 7})
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 pt-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[#A91079]" />
+                    New Section Details
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    Will be created automatically upon template download or schedule import
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                      Section Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={newSectionName}
+                      onChange={(e) => setNewSectionName(e.target.value)}
+                      placeholder="e.g. Grade 7 - Diamond"
+                      disabled={loading || importing}
+                      className="w-full bg-white border border-[#D9B8D7] text-slate-900 text-xs font-medium rounded-lg px-3 py-2 shadow-2xs focus:ring-2 focus:ring-[#A91079] focus:outline-hidden"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                      Grade Level
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={newSectionGrade}
+                        onChange={(e) => setNewSectionGrade(Number(e.target.value))}
+                        disabled={loading || importing}
+                        className="w-full bg-white border border-[#D9B8D7] text-slate-900 text-xs font-semibold rounded-lg px-3 py-2 pr-8 shadow-2xs focus:ring-2 focus:ring-[#A91079] focus:outline-hidden appearance-none cursor-pointer"
+                      >
+                        <option value={7}>Grade 7</option>
+                        <option value={8}>Grade 8</option>
+                        <option value={9}>Grade 9</option>
+                        <option value={10}>Grade 10</option>
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                      Program Track
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={newSectionTrack}
+                        onChange={(e) => setNewSectionTrack(e.target.value)}
+                        disabled={loading || importing}
+                        className="w-full bg-white border border-[#D9B8D7] text-slate-900 text-xs font-semibold rounded-lg px-3 py-2 pr-8 shadow-2xs focus:ring-2 focus:ring-[#A91079] focus:outline-hidden appearance-none cursor-pointer"
+                      >
+                        <option value="BEC">BEC (Regular)</option>
+                        <option value="STE">STE (Science & Tech)</option>
+                        <option value="SPS">SPS (Sports)</option>
+                        <option value="SPA">SPA (Arts)</option>
+                        <option value="SPJ">SPJ (Journalism)</option>
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                      Room Number (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={newSectionRoom}
+                      onChange={(e) => setNewSectionRoom(e.target.value)}
+                      placeholder={`e.g. Room ${newSectionGrade}01`}
+                      disabled={loading || importing}
+                      className="w-full bg-white border border-[#D9B8D7] text-slate-900 text-xs font-medium rounded-lg px-3 py-2 shadow-2xs focus:ring-2 focus:ring-[#A91079] focus:outline-hidden"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                      Class Adviser (Optional)
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={newSectionAdviserId}
+                        onChange={(e) => setNewSectionAdviserId(e.target.value ? Number(e.target.value) : "")}
+                        disabled={loading || importing}
+                        className="w-full bg-white border border-[#D9B8D7] text-slate-900 text-xs font-medium rounded-lg px-3 py-2 pr-8 shadow-2xs focus:ring-2 focus:ring-[#A91079] focus:outline-hidden appearance-none cursor-pointer"
+                      >
+                        <option value="">No adviser designated yet</option>
+                        {teachers?.map((t: any) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} ({t.position || "Teacher"})
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={handleCreateNewSection}
+                    disabled={creatingSection || !newSectionName.trim()}
+                    className="px-4 py-2 bg-[#2E0249] hover:bg-[#4A0E4E] disabled:bg-slate-300 text-white rounded-lg text-xs font-bold shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    {creatingSection ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
+                    <span>Create Section Now</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Error / Success Notifications */}

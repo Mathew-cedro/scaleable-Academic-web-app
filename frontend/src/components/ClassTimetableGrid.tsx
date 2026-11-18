@@ -680,10 +680,10 @@ export const ClassTimetableGrid = ({
               type="button"
               onClick={() => setIsImportScheduleExcelOpen(true)}
               className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold transition shadow-2xs flex items-center gap-1.5 cursor-pointer"
-              title={isTagalog ? "Mag-import ng Talaorasan ng Seksiyon gamit ang Excel/CSV" : "Import Section Timetable via Excel or CSV"}
+              title={isTagalog ? "Mag-import ng Seksiyon gamit ang Excel/CSV" : "Import Section via Excel or CSV"}
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>{isTagalog ? "Mag-import ng Talaorasan (Excel)" : "Import Schedule (Excel)"}</span>
+              <span>{isTagalog ? "Mag-import ng Seksiyon" : "Import Section"}</span>
             </button>
             <button
               type="button"
@@ -984,6 +984,7 @@ export const ClassTimetableGrid = ({
           onClose={() => setIsImportScheduleExcelOpen(false)}
           sections={sections}
           initialSectionId={selectedSectionId}
+          teachers={teachers}
           onImportComplete={() => {
             if (onRefreshData) onRefreshData();
           }}

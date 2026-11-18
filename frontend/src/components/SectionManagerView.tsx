@@ -204,10 +204,10 @@ export const SectionManagerView = ({
             type="button"
             onClick={() => setIsImportExcelOpen(true)}
             className="px-3.5 py-2 bg-[#ECFDF5] hover:bg-[#D1FAE5] border border-emerald-300 text-emerald-800 rounded-lg text-xs font-semibold shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
-            title="Import section weekly timetable schedule via Excel (.xlsx, .xls) or CSV"
+            title="Import section schedule via Excel (.xlsx, .xls) or CSV"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>Import Schedule (Excel)</span>
+            <span>Import Section</span>
           </button>
 
           <button
