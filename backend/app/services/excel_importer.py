@@ -242,9 +242,6 @@ def generate_section_schedule_template(section: Section, session: Session) -> io
     locked_fill = PatternFill(start_color="FAF5FA", end_color="FAF5FA", fill_type="solid")
     alt_fill = PatternFill(start_color="FDFDFD", end_color="FDFDFD", fill_type="solid")
 
-    instruct_fill = PatternFill(start_color="F9E2F4", end_color="F9E2F4", fill_type="solid")
-    instruct_font = Font(name="Calibri", size=8.5, italic=True, color="703372")
-
     thin_border_side = Side(border_style="thin", color="CBD5E1")
     grid_border = Border(left=thin_border_side, right=thin_border_side, top=thin_border_side, bottom=thin_border_side)
 
@@ -352,32 +349,6 @@ def generate_section_schedule_template(section: Section, session: Session) -> io
             ws.cell(row=row_cursor, column=c_idx).border = grid_border
             ws.cell(row=row_cursor, column=c_idx).font = data_font
 
-        row_cursor += 1
-
-    # 4. Instructions & Guidelines Box
-    row_cursor += 1
-    ws.merge_cells(f"A{row_cursor}:G{row_cursor}")
-    guide_title = ws.cell(row=row_cursor, column=1, value="DEPED SCHEDULE IMPORT INSTRUCTIONS & RULES")
-    guide_title.font = Font(name="Calibri", size=9.5, bold=True, color="2E0249")
-    ws.row_dimensions[row_cursor].height = 20
-    row_cursor += 1
-
-    rules = [
-        "1. Cell Formatting: You can enter just the Subject Name (e.g. 'Science') or Subject and Teacher together (e.g. 'Science - Dr. Aris Thorne' or separated by newline).",
-        "2. Auto-Assignment: If a teacher name is omitted in a cell, the system will match an available active faculty member from that subject's department.",
-        "3. Monday Period 1: Reserved strictly for Homeroom Guidance Program conducted by the Section Class Adviser (DepEd Order No. 009, s. 2026).",
-        "4. Teacher Clash Prevention: The importer validates against all other sections. If a teacher is already teaching another class at that time, a conflict warning will be surfaced.",
-        "5. Magna Carta Compliance (RA 4670): Total daily teaching hours for each faculty member will be monitored to remain strictly <= 6.0 hours/day.",
-        "6. Tabular List Alternative: You can also upload a standard table with columns: 'Day of Week', 'Period', 'Subject', and 'Teacher'.",
-    ]
-
-    for rule in rules:
-        ws.merge_cells(f"A{row_cursor}:G{row_cursor}")
-        c = ws.cell(row=row_cursor, column=1, value=rule)
-        c.font = instruct_font
-        c.fill = instruct_fill
-        c.alignment = Alignment(horizontal="left", vertical="center")
-        ws.row_dimensions[row_cursor].height = 18
         row_cursor += 1
 
     buf = io.BytesIO()
