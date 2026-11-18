@@ -120,17 +120,14 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
     return localSections.find((s) => s.id === selectedSectionId) || localSections[0];
   }, [localSections, selectedSectionId]);
 
-  const handleCreateNewSection = async (): Promise<number | null> => {
-    const trimmed = newSectionName.trim();
-    if (!trimmed) {
-      setError("Please enter a section name for the new section.");
-      return null;
-    }
+  const handleCreateNewSection = async (customName?: string): Promise<number | null> => {
+    const trimmed = (customName !== undefined ? customName : newSectionName).trim();
+    const finalName = trimmed || `Grade ${newSectionGrade} - Section ${localSections.length + 1}`;
     try {
       setCreatingSection(true);
       setError(null);
       const created = await api.createSection({
-        name: trimmed,
+        name: finalName,
         grade_level: Number(newSectionGrade),
         program_type: newSectionTrack,
         room_number: newSectionRoom.trim() || `Room ${newSectionGrade}01`,
@@ -160,29 +157,28 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
   };
 
   const handleDownloadTemplate = async () => {
-    let targetSec = currentSection;
-
-    if (sectionOption === "NEW") {
-      const trimmed = newSectionName.trim();
-      if (!trimmed) {
-        setError("Please enter a Section Name first to generate and download its pre-filled template, or switch to Pre-existing Section.");
-        return;
-      }
-      const createdId = await handleCreateNewSection();
-      if (!createdId) return;
-      targetSec = localSections.find((s) => s.id === createdId) || {
-        id: createdId,
-        name: trimmed,
-        grade_level: newSectionGrade,
-        program_type: newSectionTrack,
-      };
-    }
-
-    if (!targetSec) return;
     try {
       setDownloadingTemplate(true);
       setError(null);
-      await api.downloadSectionScheduleTemplateExcel(targetSec.id, targetSec.name);
+
+      if (sectionOption === "NEW") {
+        // Download pre-filled template even if fields are left empty!
+        const secName = newSectionName.trim() || `Grade ${newSectionGrade} - New Section`;
+        await api.downloadSectionScheduleTemplateExcel(
+          0,
+          secName,
+          newSectionGrade,
+          newSectionTrack,
+        );
+      } else {
+        if (!currentSection) return;
+        await api.downloadSectionScheduleTemplateExcel(
+          currentSection.id,
+          currentSection.name,
+          currentSection.grade_level || currentSection.gradeLevel,
+          currentSection.program_type,
+        );
+      }
     } catch (err: any) {
       setError(err?.message || "Failed to download schedule template.");
     } finally {
@@ -200,12 +196,17 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
     let targetId = selectedSectionId;
 
     if (sectionOption === "NEW") {
-      const trimmed = newSectionName.trim();
-      if (!trimmed) {
-        setError("Please enter a Section Name for the new section before uploading its schedule.");
-        return;
+      let secName = newSectionName.trim();
+      if (!secName) {
+        const baseName = selectedFile.name
+          .replace(/\.[^/.]+$/, "")
+          .replace(/^(?:Schedule_Template_|Schedule_)/i, "")
+          .replace(/_/g, " ")
+          .trim();
+        secName = baseName || `Grade ${newSectionGrade} - Section ${localSections.length + 1}`;
+        setNewSectionName(secName);
       }
-      const createdId = await handleCreateNewSection();
+      const createdId = await handleCreateNewSection(secName);
       if (!createdId) return;
       targetId = createdId;
     }
@@ -578,7 +579,7 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
                 <div className="flex justify-end pt-1">
                   <button
                     type="button"
-                    onClick={handleCreateNewSection}
+                    onClick={() => handleCreateNewSection()}
                     disabled={creatingSection || !newSectionName.trim()}
                     className="px-4 py-2 bg-[#2E0249] hover:bg-[#4A0E4E] disabled:bg-slate-300 text-white rounded-lg text-xs font-bold shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
                   >

@@ -772,8 +772,19 @@ export const api = {
     window.URL.revokeObjectURL(downloadUrl);
   },
 
-  async downloadSectionScheduleTemplateExcel(sectionId: number, sectionName: string = "Section"): Promise<void> {
-    const url = `${API_BASE}/sections/${sectionId}/schedule-template-excel`;
+  async downloadSectionScheduleTemplateExcel(
+    sectionId: number = 0,
+    sectionName: string = "Section",
+    gradeLevel?: number,
+    programType?: string,
+  ): Promise<void> {
+    const params = new URLSearchParams();
+    if (sectionName) params.append("name", sectionName);
+    if (gradeLevel) params.append("grade_level", String(gradeLevel));
+    if (programType) params.append("program_type", programType);
+
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    const url = `${API_BASE}/sections/${sectionId}/schedule-template-excel${qs}`;
     const res = await fetch(url);
     if (!res.ok) {
       throw new Error(await parseErrorMessage(res, "Failed to download section schedule template"));
