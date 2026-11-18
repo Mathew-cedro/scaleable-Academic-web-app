@@ -512,11 +512,12 @@ def download_section_schedule_excel_template(
     name: Optional[str] = Query(None),
     grade_level: Optional[int] = Query(None),
     program_type: Optional[str] = Query(None),
+    max_periods: int = Query(9, ge=7, le=9),
     session: Session = Depends(get_session),
 ):
     """
     Download a formatted DepEd Section Schedule / Timetable Excel (.xlsx) template
-    pre-filled with the section's bell schedule and Monday-Friday periods.
+    pre-filled with the section's bell schedule and Monday-Friday periods extended up to 9 periods.
     Supports section_id=0 for a clean new section template without requiring a database record.
     """
     if section_id == 0:
@@ -532,7 +533,7 @@ def download_section_schedule_excel_template(
         if not sec:
             raise HTTPException(status_code=404, detail="Section not found")
 
-    buffer = generate_section_schedule_template(sec, session)
+    buffer = generate_section_schedule_template(sec, session, max_periods=max_periods)
     safe_name = re.sub(r"[^a-zA-Z0-9_\-]", "_", sec.name)
     return StreamingResponse(
         buffer,
@@ -549,6 +550,7 @@ def download_blank_section_schedule_excel_template(
     name: Optional[str] = Query(None),
     grade_level: Optional[int] = Query(None),
     program_type: Optional[str] = Query(None),
+    max_periods: int = Query(9, ge=7, le=9),
     session: Session = Depends(get_session),
 ):
     """Convenience endpoint to download a blank section schedule template."""
@@ -557,6 +559,7 @@ def download_blank_section_schedule_excel_template(
         name=name,
         grade_level=grade_level,
         program_type=program_type,
+        max_periods=max_periods,
         session=session,
     )
 

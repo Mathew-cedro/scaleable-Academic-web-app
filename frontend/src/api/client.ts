@@ -648,6 +648,12 @@ export const api = {
     return res.json();
   },
 
+  async getSubjects(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/subjects`);
+    if (!res.ok) throw new Error("Failed to fetch subjects");
+    return res.json();
+  },
+
   async createSubject(data: {
     name: string;
     department_id: number;
@@ -777,11 +783,13 @@ export const api = {
     sectionName: string = "Section",
     gradeLevel?: number,
     programType?: string,
+    maxPeriods: number = 9,
   ): Promise<void> {
     const params = new URLSearchParams();
     if (sectionName) params.append("name", sectionName);
     if (gradeLevel) params.append("grade_level", String(gradeLevel));
     if (programType) params.append("program_type", programType);
+    if (maxPeriods) params.append("max_periods", String(maxPeriods));
 
     const qs = params.toString() ? `?${params.toString()}` : "";
     const url = `${API_BASE}/sections/${sectionId}/schedule-template-excel${qs}`;

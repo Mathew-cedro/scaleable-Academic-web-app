@@ -218,10 +218,10 @@ def parse_schedule_cell(cell_val: Any) -> Tuple[Optional[str], Optional[str]]:
 # =============================================================================
 # SECTION SCHEDULE: EXCEL TEMPLATE GENERATOR
 # =============================================================================
-def generate_section_schedule_template(section: Section, session: Session) -> io.BytesIO:
+def generate_section_schedule_template(section: Section, session: Session, max_periods: int = 9) -> io.BytesIO:
     """
     Generates a high-quality, pre-styled official DepEd Class Program / Section Schedule (.xlsx)
-    template tailored to the specific section's grade level and program track.
+    template tailored to the specific section's grade level and program track, extended to 9 periods.
     """
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -287,9 +287,10 @@ def generate_section_schedule_template(section: Section, session: Session) -> io
         col_letter = get_column_letter(col_idx)
         ws.column_dimensions[col_letter].width = col_width
 
-    # 3. Schedule Rows (Periods 1 to 7/9 with breaks)
-    is_special = section.program_type.upper() in ("STE", "SPS", "SPA", "SPJ")
-    max_periods = 9 if is_special else 7
+    # 3. Schedule Rows (Extended up to 9 periods with standard DepEd breaks)
+    if max_periods is None or max_periods < 7:
+        max_periods = 9
+    max_periods = min(9, max(7, max_periods))
 
     # Load existing schedule slots for this section to pre-fill template
     existing_slots = session.exec(select(ScheduleSlot).where(ScheduleSlot.section_id == section.id)).all()
