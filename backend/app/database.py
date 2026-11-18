@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Generator
 from sqlmodel import Session, SQLModel, create_engine
+from sqlalchemy import event
 
 # Resolve path for local sqlite file relative to backend root
 DEFAULT_DB_FILE = Path(__file__).resolve().parent.parent / "scheduler.db"
@@ -20,6 +21,14 @@ engine = create_engine(
     echo=False,
     connect_args=connect_args
 )
+
+if DATABASE_URL.startswith("sqlite"):
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.close()
 
 
 def init_db() -> None:

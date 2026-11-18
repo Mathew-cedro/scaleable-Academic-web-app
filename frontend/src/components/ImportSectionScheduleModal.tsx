@@ -12,6 +12,7 @@ import {
   Lock,
   Layers,
   ChevronDown,
+  Edit3,
 } from "lucide-react";
 import { api } from "../api/client";
 
@@ -31,9 +32,16 @@ interface ParsedSlotItem {
   raw_subject: string;
   subject_id: number | null;
   subject_name: string;
+  department_id?: number | null;
   raw_teacher?: string | null;
   teacher_id: number | null;
   teacher_name: string;
+  eligible_teachers?: Array<{
+    id: number;
+    name: string;
+    current_load: number;
+    is_adviser?: boolean;
+  }>;
   is_locked: boolean;
   status: "VALID" | "CONFLICT" | "WARNING" | "UNMATCHED_SUBJECT" | "UNMATCHED_TEACHER";
   message: string;
@@ -54,6 +62,7 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
   onImportComplete,
   sections,
   initialSectionId,
+  teachers,
 }) => {
   const [selectedSectionId, setSelectedSectionId] = useState<number>(() => {
     if (initialSectionId) return initialSectionId;
@@ -69,6 +78,9 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
 
   const [previewSlots, setPreviewSlots] = useState<ParsedSlotItem[]>([]);
   const [layoutDetected, setLayoutDetected] = useState<string>("");
+  const [availableSheets, setAvailableSheets] = useState<string[]>([]);
+  const [activeSheet, setActiveSheet] = useState<string>("");
+  const [editingSlotCoord, setEditingSlotCoord] = useState<{ day: number; period: number } | null>(null);
   const [stats, setStats] = useState<{
     total_slots: number;
     valid_count: number;
@@ -124,6 +136,8 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
       const data = await api.previewSectionScheduleExcel(selectedSectionId, selectedFile);
       setPreviewSlots(data.slots || []);
       setLayoutDetected(data.layout_detected || "GRID_MATRIX");
+      setAvailableSheets(data.available_sheets || []);
+      setActiveSheet(data.active_sheet || "");
       setStats(data.stats || { total_slots: 0, valid_count: 0, conflict_count: 0, warning_count: 0 });
     } catch (err: any) {
       setError(err?.message || "Failed to parse section schedule spreadsheet.");
@@ -131,6 +145,65 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSelectSheet = async (sheetName: string) => {
+    if (!file) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const matchingSec = sections.find((s) => {
+        const cleanName = s.name.replace(/^(grade\s*\d+\s*[-–]\s*)/i, "").trim().toLowerCase();
+        return sheetName.toLowerCase().includes(cleanName) || s.name.toLowerCase().includes(sheetName.toLowerCase());
+      });
+      const targetSecId = matchingSec ? matchingSec.id : selectedSectionId;
+      if (matchingSec && matchingSec.id !== selectedSectionId) {
+        setSelectedSectionId(matchingSec.id);
+      }
+
+      const data = await api.previewSectionScheduleExcel(targetSecId, file, sheetName);
+      setPreviewSlots(data.slots || []);
+      setLayoutDetected(data.layout_detected || "GRID_MATRIX");
+      setActiveSheet(sheetName);
+      setStats(data.stats || { total_slots: 0, valid_count: 0, conflict_count: 0, warning_count: 0 });
+    } catch (err: any) {
+      setError(err?.message || "Failed to switch sheet.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReassignTeacher = (dayIdx: number, periodIdx: number, teacherId: number) => {
+    const updated = previewSlots.map((slot) => {
+      if (slot.day_of_week === dayIdx && slot.period_index === periodIdx) {
+        const tInfo = slot.eligible_teachers?.find((t) => t.id === teacherId) ||
+          teachers?.find((t: any) => t.id === teacherId);
+        const tName = tInfo?.name || `Teacher #${teacherId}`;
+        return {
+          ...slot,
+          teacher_id: teacherId,
+          teacher_name: tName,
+          status: "VALID" as const,
+          message: `Manually reassigned to ${tName}`,
+        };
+      }
+      return slot;
+    });
+
+    setPreviewSlots(updated);
+    setEditingSlotCoord(null);
+
+    const confCount = updated.filter(
+      (s) => s.status === "CONFLICT" || s.status.startsWith("UNMATCHED")
+    ).length;
+    const warnCount = updated.filter((s) => s.status === "WARNING").length;
+    const valCount = updated.filter((s) => s.status === "VALID").length;
+    setStats({
+      total_slots: updated.length,
+      conflict_count: confCount,
+      warning_count: warnCount,
+      valid_count: valCount,
+    });
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -353,6 +426,32 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
           {/* Interactive Preview View */}
           {previewSlots.length > 0 && (
             <div className="space-y-4">
+              {/* Multi-Sheet Tab Strip */}
+              {availableSheets.length > 1 && (
+                <div className="flex items-center gap-2 bg-[#FAF5FA] border border-[#E5CCE3] p-2.5 rounded-xl overflow-x-auto shadow-2xs">
+                  <span className="text-[11px] font-bold text-[#A91079] uppercase tracking-wider shrink-0 flex items-center gap-1.5">
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-[#A91079]" />
+                    <span>Workbook Sheets:</span>
+                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {availableSheets.map((sh) => (
+                      <button
+                        key={sh}
+                        type="button"
+                        onClick={() => handleSelectSheet(sh)}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer shrink-0 ${
+                          activeSheet === sh
+                            ? "bg-[#2E0249] text-white shadow-xs"
+                            : "bg-white hover:bg-purple-100 text-slate-700 border border-slate-200"
+                        }`}
+                      >
+                        {sh}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Top Stats Strip */}
               <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
                 <div className="flex items-center gap-2">
@@ -479,6 +578,7 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
 
                                 const isConflict = slot.status === "CONFLICT" || slot.status.startsWith("UNMATCHED");
                                 const isWarning = slot.status === "WARNING";
+                                const isEditing = editingSlotCoord?.day === dayIdx && editingSlotCoord?.period === periodNum;
 
                                 return (
                                   <td
@@ -491,16 +591,29 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
                                         : "bg-white"
                                     }`}
                                   >
-                                    <div className="space-y-1">
+                                    <div className="space-y-1 relative">
                                       <div className="flex items-center justify-between gap-1">
                                         <span className="font-bold text-slate-900 truncate">
                                           {slot.subject_name}
                                         </span>
-                                        {slot.is_locked && (
-                                          <span title="Locked Slot">
-                                            <Lock className="w-3 h-3 text-[#A91079]" />
-                                          </span>
-                                        )}
+                                        <div className="flex items-center gap-1 shrink-0">
+                                          {slot.is_locked && (
+                                            <span title="Locked Slot">
+                                              <Lock className="w-3 h-3 text-[#A91079]" />
+                                            </span>
+                                          )}
+                                          <button
+                                            type="button"
+                                            title="Reassign faculty to resolve clash"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setEditingSlotCoord(isEditing ? null : { day: dayIdx, period: periodNum });
+                                            }}
+                                            className="p-1 hover:bg-purple-100 rounded text-slate-400 hover:text-[#A91079] transition cursor-pointer"
+                                          >
+                                            <Edit3 className="w-3 h-3" />
+                                          </button>
+                                        </div>
                                       </div>
                                       <div className="text-[11px] text-slate-600 truncate">
                                         {slot.teacher_name}
@@ -509,13 +622,54 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
                                         <div
                                           className={`text-[10px] font-medium leading-tight ${
                                             isConflict
-                                              ? "text-red-700"
+                                              ? "text-red-700 font-semibold"
                                               : isWarning
                                               ? "text-amber-800"
                                               : "text-emerald-700"
                                           }`}
                                         >
                                           {slot.message}
+                                        </div>
+                                      )}
+
+                                      {/* Interactive In-Modal Clash Resolver Popover */}
+                                      {isEditing && (
+                                        <div className="mt-1.5 p-2 bg-purple-50 border border-purple-300 rounded-lg shadow-md space-y-1 text-left z-30">
+                                          <div className="text-[10px] font-bold text-purple-900 uppercase tracking-wider flex items-center justify-between">
+                                            <span>Reassign Faculty:</span>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingSlotCoord(null);
+                                              }}
+                                              className="text-slate-400 hover:text-slate-700"
+                                            >
+                                              <X className="w-3 h-3" />
+                                            </button>
+                                          </div>
+                                          <select
+                                            value={slot.teacher_id || ""}
+                                            onChange={(e) => {
+                                              e.stopPropagation();
+                                              handleReassignTeacher(dayIdx, periodNum, Number(e.target.value));
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="w-full text-xs bg-white border border-purple-300 rounded px-2 py-1 font-semibold text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-purple-500 cursor-pointer"
+                                          >
+                                            <option value="">-- Choose Substitute --</option>
+                                            {slot.eligible_teachers && slot.eligible_teachers.length > 0
+                                              ? slot.eligible_teachers.map((t) => (
+                                                  <option key={t.id} value={t.id}>
+                                                    {t.name} ({t.current_load} hrs/wk{t.is_adviser ? " • Adviser" : ""})
+                                                  </option>
+                                                ))
+                                              : teachers?.map((t: any) => (
+                                                  <option key={t.id} value={t.id}>
+                                                    {t.name} ({t.current_load_hours || 0} hrs/wk)
+                                                  </option>
+                                                ))}
+                                          </select>
                                         </div>
                                       )}
                                     </div>
@@ -539,9 +693,10 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
                       <tr>
                         <th className="p-2.5 font-bold">Day & Period</th>
                         <th className="p-2.5 font-bold">Subject</th>
-                        <th className="p-2.5 font-bold">Teacher</th>
+                        <th className="p-2.5 font-bold">Assigned Teacher</th>
                         <th className="p-2.5 font-bold">Audit Status</th>
                         <th className="p-2.5 font-bold">Diagnostic Details</th>
+                        <th className="p-2.5 font-bold">Resolve Clash</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -554,7 +709,7 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
                               {slot.day_name} • Period {slot.period_index}
                             </td>
                             <td className="p-2.5 font-bold text-slate-900">{slot.subject_name}</td>
-                            <td className="p-2.5 text-slate-700">{slot.teacher_name}</td>
+                            <td className="p-2.5 text-slate-700 font-semibold">{slot.teacher_name}</td>
                             <td className="p-2.5 whitespace-nowrap">
                               {isConflict ? (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800">
@@ -571,6 +726,32 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
                               )}
                             </td>
                             <td className="p-2.5 text-slate-600 text-[11px]">{slot.message || "—"}</td>
+                            <td className="p-2.5">
+                              <select
+                                value={slot.teacher_id || ""}
+                                onChange={(e) =>
+                                  handleReassignTeacher(
+                                    slot.day_of_week,
+                                    slot.period_index,
+                                    Number(e.target.value)
+                                  )
+                                }
+                                className="text-xs bg-white border border-slate-300 rounded px-2 py-1 font-semibold text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-purple-500 cursor-pointer"
+                              >
+                                <option value="">-- Reassign --</option>
+                                {slot.eligible_teachers && slot.eligible_teachers.length > 0
+                                  ? slot.eligible_teachers.map((t) => (
+                                      <option key={t.id} value={t.id}>
+                                        {t.name} ({t.current_load} hrs/wk{t.is_adviser ? " • Adv" : ""})
+                                      </option>
+                                    ))
+                                  : teachers?.map((t: any) => (
+                                      <option key={t.id} value={t.id}>
+                                        {t.name}
+                                      </option>
+                                    ))}
+                              </select>
+                            </td>
                           </tr>
                         );
                       })}

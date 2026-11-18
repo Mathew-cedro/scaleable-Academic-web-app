@@ -48,6 +48,12 @@ htmlcov/
 # Test & Temporary DBs
 test_scheduler.db
 thesis.db
+backend/test_*.db
+backend/sim_*.db
+backend/temp_*.db
+*.db-wal
+*.db-shm
+scratch/
 backend/scratch/
 
 # OS / Editor

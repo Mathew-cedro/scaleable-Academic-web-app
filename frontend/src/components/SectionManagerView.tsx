@@ -20,6 +20,7 @@ import {
 import { BatchSectionSetupModal } from "./BatchSectionSetupModal";
 import { AddSpecialTrackModal } from "./AddSpecialTrackModal";
 import { ImportSectionScheduleModal } from "./ImportSectionScheduleModal";
+import { ImportSectionRosterModal } from "./ImportSectionRosterModal";
 import {
   loadModularTracks,
   saveModularTracks,
@@ -85,6 +86,7 @@ export const SectionManagerView = ({
   const [isBatchOpen, setIsBatchOpen] = useState(false);
   const [isAddTrackOpen, setIsAddTrackOpen] = useState(false);
   const [isImportExcelOpen, setIsImportExcelOpen] = useState(false);
+  const [isImportRosterOpen, setIsImportRosterOpen] = useState(false);
   const [tracks, setTracks] = useState<ModularTrack[]>(loadModularTracks);
 
   useEffect(() => {
@@ -188,6 +190,16 @@ export const SectionManagerView = ({
         </div>
 
         <div className="flex items-center gap-2 self-start md:self-auto shrink-0 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setIsImportRosterOpen(true)}
+            className="px-3.5 py-2 bg-[#F0FDF4] hover:bg-[#DCFCE7] border border-emerald-300 text-emerald-800 rounded-lg text-xs font-semibold shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
+            title="Batch import section roster (names, grades, tracks, classrooms, advisers) via Excel (.xlsx, .xls) or CSV"
+          >
+            <GraduationCap className="w-4 h-4 text-emerald-600" />
+            <span>Import Sections (Excel)</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setIsImportExcelOpen(true)}
@@ -572,6 +584,18 @@ export const SectionManagerView = ({
             window.dispatchEvent(new CustomEvent("schedmaster_sections_refresh"));
           }}
           teachers={teachers}
+        />
+      )}
+
+      {/* Batch Import Section Roster via Excel/CSV Modal */}
+      {isImportRosterOpen && (
+        <ImportSectionRosterModal
+          isOpen={isImportRosterOpen}
+          onClose={() => setIsImportRosterOpen(false)}
+          onImportComplete={() => {
+            if (onRefreshData) onRefreshData();
+            window.dispatchEvent(new CustomEvent("schedmaster_sections_refresh"));
+          }}
         />
       )}
     </div>

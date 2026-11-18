@@ -534,6 +534,7 @@ def download_section_schedule_excel_template(
 async def preview_section_schedule_excel(
     section_id: int,
     file: UploadFile = File(...),
+    sheet_name: Optional[str] = Form(None),
     session: Session = Depends(get_session),
 ):
     """
@@ -543,7 +544,7 @@ async def preview_section_schedule_excel(
     """
     contents = await file.read()
     filename = file.filename or "schedule.xlsx"
-    result = parse_and_preview_section_schedule_excel(contents, filename, section_id, session)
+    result = parse_and_preview_section_schedule_excel(contents, filename, section_id, session, sheet_name=sheet_name)
     if not result.get("success"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

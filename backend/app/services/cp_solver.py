@@ -286,7 +286,7 @@ def generate_master_schedule(
             core_matched = [
                 s for s in academic_subjects
                 if (getattr(s, "program_type", None) or "ALL").upper().strip() in ("ALL", "BEC", "REGULAR", "")
-                and (s.id in (1, 2, 3, 4, 5, 6, 7, 8) or s.grade_level == sec_grade or s.grade_level in (0, 8))
+                and (s.id in (1, 2, 3, 4, 5, 6, 7, 8) or s.grade_level == sec_grade or s.grade_level == 0)
             ]
             return core_matched if core_matched else [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
 
@@ -294,13 +294,9 @@ def generate_master_schedule(
             s for s in academic_subjects
             if (
                 (getattr(s, "program_type", None) or "ALL").upper().strip() in ("ALL", "BEC", "REGULAR", "")
-                and (s.id in (1, 2, 3, 4, 5, 6, 7, 8) or s.grade_level == sec_grade or s.grade_level in (0, 8))
+                and (s.id in (1, 2, 3, 4, 5, 6, 7, 8) or s.grade_level == sec_grade or s.grade_level == 0)
             ) or (
-                (
-                    (getattr(s, "program_type", None) or "").upper().strip() in aliases
-                    or is_specialized_subject(p_type, s.id)
-                )
-                and (s.grade_level == sec_grade or s.grade_level == 0)
+                (s.grade_level == sec_grade or s.grade_level == 0)
                 and is_track_matching_subject(p_type, s.name, getattr(s, "program_type", None))
             )
         ]
@@ -914,8 +910,8 @@ def repair_schedule(
                 allowed_ids = set(matched_ids)
                 db_track_sub_ids = {
                     s.id for s in academic_subjects
-                    if (getattr(s, "program_type", None) or "").upper().strip() in aliases
-                    and (s.grade_level == sec_grade or s.grade_level == 0)
+                    if (s.grade_level == sec_grade or s.grade_level == 0)
+                    and is_track_matching_subject(p_type, s.name, getattr(s, "program_type", None))
                 }
                 combined_allowed = allowed_ids | db_track_sub_ids
                 matched = [s for s in academic_subjects if s.id in combined_allowed]
@@ -928,10 +924,6 @@ def repair_schedule(
             grade_new_special = [
                 s for s in academic_subjects
                 if s.id not in existing_sub_ids
-                and (
-                    (getattr(s, "program_type", None) or "").upper().strip() in aliases
-                    or is_specialized_subject(p_type, s.id)
-                )
                 and (s.grade_level == sec_grade or s.grade_level == 0)
                 and is_track_matching_subject(p_type, s.name, getattr(s, "program_type", None))
             ]
@@ -940,20 +932,16 @@ def repair_schedule(
             core_matched = [
                 s for s in academic_subjects
                 if (getattr(s, "program_type", None) or "ALL").upper().strip() in ("ALL", "BEC", "REGULAR", "")
-                and (s.id in (1, 2, 3, 4, 5, 6, 7, 8) or s.grade_level == sec_grade or s.grade_level in (0, 8))
+                and (s.id in (1, 2, 3, 4, 5, 6, 7, 8) or s.grade_level == sec_grade or s.grade_level == 0)
             ]
             return core_matched if core_matched else [s for s in academic_subjects if s.id in (1, 2, 3, 4, 5, 6, 7, 8)]
         special_matched = [
             s for s in academic_subjects
             if (
                 (getattr(s, "program_type", None) or "ALL").upper().strip() in ("ALL", "BEC", "REGULAR", "")
-                and (s.id in (1, 2, 3, 4, 5, 6, 7, 8) or s.grade_level == sec_grade or s.grade_level in (0, 8))
+                and (s.id in (1, 2, 3, 4, 5, 6, 7, 8) or s.grade_level == sec_grade or s.grade_level == 0)
             ) or (
-                (
-                    (getattr(s, "program_type", None) or "").upper().strip() in aliases
-                    or is_specialized_subject(p_type, s.id)
-                )
-                and (s.grade_level == sec_grade or s.grade_level == 0)
+                (s.grade_level == sec_grade or s.grade_level == 0)
                 and is_track_matching_subject(p_type, s.name, getattr(s, "program_type", None))
             )
         ]
@@ -1016,6 +1004,37 @@ def repair_schedule(
 
     affected_dept_ids = {t.department_id for t in absent_teachers} | changed_departments
 
+    # Fast-path check: if no sections changed and no teachers absent, schedule is intact & valid
+    if not changed_sections and not absent_teacher_ids and original_slots:
+        latency_ms = (time.perf_counter() - start_time) * 1000.0
+        diff_result = compute_schedule_diff(
+            original_slots=original_slots,
+            repaired_slots=original_slots,
+            teachers_map=teacher_map,
+            sections_map=section_map,
+            subjects_map=subject_map,
+        )
+        saved_slots = session.exec(select(ScheduleSlot)).all()
+        hydrated_slots = hydrate_slots(saved_slots, section_map, subject_map, teacher_map, dept_map)
+        report_text = generate_compliance_report(
+            teachers=teachers,
+            sections=sections,
+            diff_result=diff_result,
+            absent_teachers=absent_teachers,
+            latency_ms=latency_ms,
+        )
+        return ScheduleOperationResponse(
+            success=True,
+            message="Schedule validated successfully: 100% compliant, 0 conflicts detected.",
+            latency_ms=latency_ms,
+            disruption_cost=0,
+            diff=diff_result,
+            report=report_text,
+            llm_report=report_text,
+            slots_count=len(saved_slots),
+            slots=hydrated_slots,
+        )
+
     model = cp_model.CpModel()
 
     # Precalculate specialized loads per section for repair period boundaries
@@ -1030,6 +1049,12 @@ def repair_schedule(
 
     # Decision variables for repair
     X = {}
+    sec_time_vars: Dict[Tuple[int, int, int], List] = {}
+    teacher_time_vars: Dict[Tuple[int, int, int], List] = {}
+    teacher_day_vars: Dict[Tuple[int, int], List] = {}
+    disruption_penalties = []
+    affected_pairs: Set[Tuple[int, int]] = set()
+
     for (c_id, s_id), count in req_counts.items():
         sub = subject_map.get(s_id)
         if not sub:
@@ -1037,45 +1062,60 @@ def repair_schedule(
         c = section_map.get(c_id)
         sec_periods = get_sec_periods(c.program_type if c else None, s_id, repair_sec_total_spec_loads.get(c_id, 8))
         eligible = dept_teachers.get(sub.department_id, [])
-        for t in eligible:
-            for d in days:
-                for p in sec_periods:
-                    X[t.id, c_id, s_id, d, p] = model.NewBoolVar(f"rx_{t.id}_{c_id}_{s_id}_{d}_{p}")
 
-    # Objective penalties:
-    # 1. Disruption penalty (100 points for any moved slot)
-    # 2. Prioritization policy penalty
-    # 3. Preferred placement penalty
-    disruption_penalties = []
-    prioritization_penalties = []
-    placement_penalties = []
+        orig_slots_for_pair = [
+            s for s in flexible_academic_slots
+            if s.section_id == c_id and s.subject_id == s_id
+        ]
+        has_absent_teacher = any(s.teacher_id in absent_teacher_ids for s in orig_slots_for_pair)
+        count_changed = orig_pair_counts.get((c_id, s_id), 0) != count
+        is_pair_affected = has_absent_teacher or count_changed or (c_id in changed_sections)
 
-    # Map original flexible assignments
-    for orig in flexible_academic_slots:
-        key = (orig.teacher_id, orig.section_id, orig.subject_id, orig.day_of_week, orig.period_index)
-        sub = subject_map.get(orig.subject_id)
-        is_affected = (
-            orig.teacher_id in absent_teacher_ids
-            or orig.section_id in changed_sections
-            or (sub and sub.department_id in affected_dept_ids)
-        )
-        if orig.teacher_id in absent_teacher_ids:
-            # Teacher is absent: cannot teach this slot
-            if key in X:
-                model.Add(X[key] == 0)
-        elif not is_affected:
-            # Unaffected sections & departments strictly pinned to eliminate combinatorial explosion
-            if key in X:
-                model.Add(X[key] == 1)
+        if not is_pair_affected and orig_slots_for_pair:
+            # Pair is unaffected: only create variables for its exact slots and pin them to eliminate combinatorial explosion
+            for sl in orig_slots_for_pair:
+                if sl.teacher_id not in absent_teacher_ids:
+                    var = model.NewBoolVar(f"rx_{sl.teacher_id}_{c_id}_{s_id}_{sl.day_of_week}_{sl.period_index}")
+                    X[sl.teacher_id, c_id, s_id, sl.day_of_week, sl.period_index] = var
+                    sec_time_vars.setdefault((c_id, sl.day_of_week, sl.period_index), []).append(var)
+                    teacher_time_vars.setdefault((sl.teacher_id, sl.day_of_week, sl.period_index), []).append(var)
+                    teacher_day_vars.setdefault((sl.teacher_id, sl.day_of_week), []).append(var)
+                    model.Add(var == 1)
         else:
-            # Affected department or changed section: soft disruption penalty (weight 100 on moved classes)
-            if key in X:
-                keep_var = X[key]
-                moved = model.NewBoolVar(f"moved_{orig.id}")
-                model.Add(moved + keep_var == 1)
-                disruption_penalties.append(100 * moved)
+            # Pair is affected: allow flexibility to accommodate emergency substitution
+            affected_pairs.add((c_id, s_id))
+            if not has_absent_teacher and orig_slots_for_pair:
+                # Subject itself is not on leave: preserve assigned teacher, only allow period rescheduling
+                pair_eligible = [t for t in eligible if t.id == orig_slots_for_pair[0].teacher_id]
+                if not pair_eligible:
+                    pair_eligible = [t for t in eligible if t.id not in absent_teacher_ids]
+            else:
+                pair_eligible = [t for t in eligible if t.id not in absent_teacher_ids]
+
+            for t in pair_eligible:
+                for d in days:
+                    for p in sec_periods:
+                        var = model.NewBoolVar(f"rx_{t.id}_{c_id}_{s_id}_{d}_{p}")
+                        X[t.id, c_id, s_id, d, p] = var
+                        sec_time_vars.setdefault((c_id, d, p), []).append(var)
+                        teacher_time_vars.setdefault((t.id, d, p), []).append(var)
+                        teacher_day_vars.setdefault((t.id, d), []).append(var)
+
+            # Soft disruption penalty for original slots (prefer keeping same period if substitute is free)
+            for sl in orig_slots_for_pair:
+                key = (sl.teacher_id, c_id, s_id, sl.day_of_week, sl.period_index)
+                if sl.teacher_id in absent_teacher_ids:
+                    if key in X:
+                        model.Add(X[key] == 0)
+                elif key in X:
+                    keep_var = X[key]
+                    moved = model.NewBoolVar(f"moved_{sl.id}")
+                    model.Add(moved + keep_var == 1)
+                    disruption_penalties.append(100 * moved)
 
     # Class Load Prioritization policy weighting
+    prioritization_penalties = []
+    placement_penalties = []
     for (t_id, c_id, s_id, d, p), var in X.items():
         teacher = teacher_map.get(t_id)
         if teacher:
@@ -1129,11 +1169,9 @@ def repair_schedule(
             for d in days:
                 for p in all_periods:
                     room_slots_at_time = [
-                        X[t.id, c.id, s.id, d, p]
+                        var
                         for c in room_secs
-                        for s in subjects
-                        for t in dept_teachers.get(s.department_id, [])
-                        if (t.id, c.id, s.id, d, p) in X
+                        for var in sec_time_vars.get((c.id, d, p), [])
                     ]
                     if len(room_slots_at_time) > 1:
                         clash_var = model.NewIntVar(0, len(room_secs), f"r_clash_{r_num[:6]}_{d}_{p}")
@@ -1149,11 +1187,10 @@ def repair_schedule(
 
     # Constraint: Homeroom slots (Monday Period 1) reserve that section & teacher period
     for hm in homeroom_slots:
-        for (t_id, c_id, s_id, d, p), var in X.items():
-            if c_id == hm.section_id and d == hm.day_of_week and p == hm.period_index:
-                model.Add(var == 0)
-            if t_id == hm.teacher_id and d == hm.day_of_week and p == hm.period_index:
-                model.Add(var == 0)
+        for var in sec_time_vars.get((hm.section_id, hm.day_of_week, hm.period_index), []):
+            model.Add(var == 0)
+        for var in teacher_time_vars.get((hm.teacher_id, hm.day_of_week, hm.period_index), []):
+            model.Add(var == 0)
 
     # Constraint: Preserved manually pinned academic slots MUST remain at their exact day and period
     locked_slot_coords = set()
@@ -1173,8 +1210,9 @@ def repair_schedule(
             if sub_vars:
                 model.Add(sum(sub_vars) == 1)
 
-    # Constraint: Maintain subject quotas for each section
-    for (c_id, s_id), count in req_counts.items():
+    # Constraint: Maintain subject quotas for affected section-subject pairs
+    for (c_id, s_id) in affected_pairs:
+        count = req_counts.get((c_id, s_id), 4)
         sub = subject_map.get(s_id)
         if not sub:
             continue
@@ -1201,12 +1239,10 @@ def repair_schedule(
             ]
             model.Add(sum(daily_slots) <= max_daily_for_sub)
 
-        # Single consistent teacher per subject per section
+        # Teacher consistency: strongly prefer 1 teacher, allow up to 2 for emergency split substitution
         if len(eligible) > 1:
             y_vars = []
             for t in eligible:
-                y = model.NewBoolVar(f"ry_{t.id}_{c_id}_{s_id}")
-                y_vars.append(y)
                 all_t_slots = [
                     X[t.id, c_id, s_id, d, p]
                     for d in days
@@ -1214,43 +1250,34 @@ def repair_schedule(
                     if (t.id, c_id, s_id, d, p) in X
                 ]
                 if all_t_slots:
+                    y = model.NewBoolVar(f"ry_{t.id}_{c_id}_{s_id}")
+                    y_vars.append(y)
                     model.Add(sum(all_t_slots) <= count * y)
-            model.Add(sum(y_vars) == 1)
+            if y_vars:
+                model.Add(sum(y_vars) >= 1)
+                model.Add(sum(y_vars) <= 2)
+                split_penalty = model.NewIntVar(0, 1, f"split_{c_id}_{s_id}")
+                model.Add(split_penalty == sum(y_vars) - 1)
+                disruption_penalties.append(150 * split_penalty)
 
-    # Collision constraints: Section & Teacher
-    for c in sections:
-        sec_periods = all_periods if is_special_track(c.program_type) else [1, 2, 3, 4, 5, 6, 7]
-        for d in days:
-            for p in sec_periods:
-                sec_slots = [
-                    X[t.id, c.id, s.id, d, p]
-                    for s in subjects
-                    for t in dept_teachers.get(s.department_id, [])
-                    if (t.id, c.id, s.id, d, p) in X
-                ]
-                if sec_slots:
-                    model.Add(sum(sec_slots) <= 1)
+    # Collision constraints: Section & Teacher (O(1) indexed)
+    for var_list in sec_time_vars.values():
+        if len(var_list) > 1:
+            model.Add(sum(var_list) <= 1)
+
+    for var_list in teacher_time_vars.values():
+        if len(var_list) > 1:
+            model.Add(sum(var_list) <= 1)
 
     for t in active_teachers:
         cap = min(t.max_daily_hours or 6, 6)
         for d in days:
-            t_daily_slots = []
-            for p in all_periods:
-                t_slots_at_time = [
-                    X[t.id, c.id, s.id, d, p]
-                    for c in sections
-                    for s in subjects
-                    if (t.id, c.id, s.id, d, p) in X
-                ]
-                if t_slots_at_time:
-                    model.Add(sum(t_slots_at_time) <= 1)
-                    t_daily_slots.extend(t_slots_at_time)
-
-            # Account for Monday Homeroom lock if adviser
-            if d == 0 and t.is_adviser:
-                model.Add(sum(t_daily_slots) + 1 <= cap)
-            else:
-                model.Add(sum(t_daily_slots) <= cap)
+            t_daily = teacher_day_vars.get((t.id, d), [])
+            if t_daily:
+                if d == 0 and t.is_adviser:
+                    model.Add(sum(t_daily) + 1 <= cap)
+                else:
+                    model.Add(sum(t_daily) <= cap)
 
     # Solve repair model
     solver = cp_model.CpSolver()

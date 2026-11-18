@@ -172,6 +172,7 @@ def parse_schedule_cell(cell_val: Any) -> Tuple[Optional[str], Optional[str]]:
       - Multi-line: 'Mathematics\nMr. David Chen'
       - Hyphen/slash/bar: 'Science - Dr. Aris Thorne', 'MAPEH / Dr. Ramos'
       - Parentheses: 'English (Ms. Camille Santos)'
+      - Parentheses room/grade stripping: 'Math (Room 101)' -> ('Math', None)
       - Single subject: 'Filipino'
     """
     text = str(cell_val or "").strip()
@@ -183,21 +184,33 @@ def parse_schedule_cell(cell_val: Any) -> Tuple[Optional[str], Optional[str]]:
     if any(k in t_lower for k in ("health break", "recess", "noon break", "lunch break")):
         return None, None
 
+    # Helper to clean room/building annotations from teacher names
+    def clean_teacher(t_str: Optional[str]) -> Optional[str]:
+        if not t_str:
+            return None
+        t_cleaned = re.sub(r"\s*\((?:room|rm\.?|bldg|building|grade|gr\.?|sec|section)[^\)]*\)", "", t_str, flags=re.IGNORECASE).strip()
+        t_cleaned = re.sub(r"^(?:room|rm\.?|bldg|building|grade|gr\.?|sec|section)\b[^\n,]*", "", t_cleaned, flags=re.IGNORECASE).strip()
+        return t_cleaned if t_cleaned else None
+
     # 1. Multi-line
     lines = [l.strip() for l in text.splitlines() if l.strip()]
     if len(lines) >= 2:
-        return lines[0], lines[1]
+        return lines[0], clean_teacher(lines[1])
 
     # 2. Delimiter separated
     for sep in [" - ", " -- ", " / ", " | "]:
         if sep in text:
             parts = text.split(sep, 1)
-            return parts[0].strip(), parts[1].strip()
+            return parts[0].strip(), clean_teacher(parts[1].strip())
 
     # 3. Parentheses
     m = re.match(r"^(.*?)\s*\((.*?)\)$", text)
     if m:
-        return m.group(1).strip(), m.group(2).strip()
+        sub_part = m.group(1).strip()
+        inside = m.group(2).strip()
+        if re.match(r"^(?:room|rm\.?|grade|gr\.?|bldg|building|sec|section)\b", inside, re.IGNORECASE):
+            return sub_part, None
+        return sub_part, clean_teacher(inside)
 
     return text, None
 
@@ -381,12 +394,13 @@ def parse_and_preview_section_schedule_excel(
     filename: str,
     section_id: int,
     session: Session,
+    sheet_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Parses an uploaded .xlsx, .xls, or .csv schedule file for a target Section.
-    Detects whether the file is a Timetable Grid Matrix or a Tabular Slot List.
+    Supports multi-sheet workbooks, timetable grid matrices, and tabular slot lists.
     Audits every slot against existing section schedules, statutory caps (RA 4670),
-    and adviser Homeroom locks. Returns an interactive preview payload.
+    and adviser Homeroom locks. Returns an interactive preview payload with in-modal clash resolution options.
     """
     section = session.get(Section, section_id)
     if not section:
@@ -416,11 +430,25 @@ def parse_and_preview_section_schedule_excel(
 
     # Load spreadsheet into pandas
     fn_lower = filename.lower()
+    available_sheets: List[str] = []
+    chosen_sheet: Optional[str] = None
     try:
         if fn_lower.endswith(".csv"):
             df_raw = pd.read_csv(io.BytesIO(file_bytes), header=None, dtype=str)
         else:
-            df_raw = pd.read_excel(io.BytesIO(file_bytes), header=None, dtype=str)
+            xl_file = pd.ExcelFile(io.BytesIO(file_bytes))
+            available_sheets = xl_file.sheet_names
+            if sheet_name and sheet_name in available_sheets:
+                chosen_sheet = sheet_name
+            elif available_sheets:
+                # Try to fuzzy-match sheet name to current section name
+                clean_sec_name = re.sub(r"^(grade\s*\d+\s*[-–]\s*)", "", section.name, flags=re.IGNORECASE).strip().lower()
+                matched_sheet = next(
+                    (s for s in available_sheets if clean_sec_name in s.lower() or s.lower() in section.name.lower()),
+                    None
+                )
+                chosen_sheet = matched_sheet or available_sheets[0]
+            df_raw = xl_file.parse(sheet_name=chosen_sheet, header=None, dtype=str)
     except Exception as e:
         return {"success": False, "error": f"Failed to read spreadsheet: {str(e)}"}
 
@@ -432,18 +460,29 @@ def parse_and_preview_section_schedule_excel(
     layout_type = "GRID_MATRIX"  # Default
     col_mapping = {}
 
+    DAY_DETECTION_KEYWORDS = [
+        "monday", "mon", "lunes",
+        "tuesday", "tue", "martes",
+        "wednesday", "wed", "miyerkules", "mierkules",
+        "thursday", "thu", "thur", "thurs", "huwebes",
+        "friday", "fri", "biyernes",
+    ]
+
     for r_idx in range(min(15, len(df_raw))):
         row_vals = [str(v or "").lower().strip() for v in df_raw.iloc[r_idx]]
 
-        # Check for Grid Matrix (Columns contain Monday, Tuesday, etc.)
-        matched_days = [c_idx for c_idx, v in enumerate(row_vals) if any(d in v for d in ["monday", "tuesday", "wednesday", "thursday", "friday", "lunes", "martes"])]
+        # Check for Grid Matrix (Columns contain Monday, Tuesday, Mon, Tue, etc.)
+        matched_days = [
+            c_idx for c_idx, v in enumerate(row_vals)
+            if any(re.search(rf"\b{re.escape(d)}\b", v) or v == d for d in DAY_DETECTION_KEYWORDS)
+        ]
         if len(matched_days) >= 3:
             header_row_idx = r_idx
             layout_type = "GRID_MATRIX"
             # Map day columns
             for c_idx, val in enumerate(row_vals):
                 for d_name, d_idx in DAYS_MAP.items():
-                    if d_name in val and d_idx not in col_mapping.values():
+                    if (re.search(rf"\b{re.escape(d_name)}\b", val) or d_name == val) and d_idx not in col_mapping.values():
                         col_mapping[c_idx] = d_idx
                         break
             break
@@ -637,6 +676,18 @@ def parse_and_preview_section_schedule_excel(
 
                 batch_teacher_daily[(matched_teacher.id, day_idx)] = cur_load + 1
 
+        # Build list of eligible teachers for this subject's department to power in-modal clash resolution
+        dept_teachers_list = teachers_by_dept.get(matched_sub.department_id, []) if matched_sub else active_teachers
+        eligible_candidates = [
+            {
+                "id": t.id,
+                "name": t.name,
+                "current_load": t.current_load_hours or 0,
+                "is_adviser": t.is_adviser,
+            }
+            for t in dept_teachers_list
+        ]
+
         preview_items.append({
             "day_of_week": day_idx,
             "day_name": DAY_NAMES[day_idx],
@@ -645,9 +696,11 @@ def parse_and_preview_section_schedule_excel(
             "raw_subject": raw_sub,
             "subject_id": matched_sub.id if matched_sub else None,
             "subject_name": matched_sub.name if matched_sub else raw_sub,
+            "department_id": matched_sub.department_id if matched_sub else None,
             "raw_teacher": raw_tch,
             "teacher_id": matched_teacher.id if matched_teacher else None,
             "teacher_name": matched_teacher.name if matched_teacher else (raw_tch or "Unassigned"),
+            "eligible_teachers": eligible_candidates,
             "is_locked": is_locked,
             "status": status_code,
             "message": conflict_msg,
@@ -661,6 +714,8 @@ def parse_and_preview_section_schedule_excel(
         "section_id": section.id,
         "section_name": section.name,
         "layout_detected": layout_type,
+        "available_sheets": available_sheets,
+        "active_sheet": chosen_sheet or (available_sheets[0] if available_sheets else "Sheet1"),
         "slots": preview_items,
         "stats": stats,
         "can_import": stats["conflict_count"] == 0,
@@ -768,9 +823,255 @@ def generate_sections_excel_template() -> io.BytesIO:
     return buf
 
 
-def parse_and_preview_spreadsheet(file_bytes: bytes, filename: str, session: Session) -> Dict[str, Any]:
-    return {"success": True, "rows": [], "stats": {"total": 0, "valid": 0, "new": 0, "updating": 0, "advisers_matched": 0}}
+def parse_and_preview_spreadsheet(
+    file_bytes: bytes,
+    filename: str,
+    session: Session,
+) -> Dict[str, Any]:
+    """
+    Parses an uploaded section roster (.xlsx, .xls, .csv).
+    Detects column headers (Section Name, Grade Level, Program Track, Room, Class Adviser).
+    Audits every record: checks grade validity (7-10), track validity (BEC, STE, SPA, SPJ, SPS),
+    matches existing database sections by name, and matches Class Adviser via fuzzy matching.
+    """
+    fn_lower = filename.lower()
+    try:
+        if fn_lower.endswith(".csv"):
+            df_raw = pd.read_csv(io.BytesIO(file_bytes), header=None, dtype=str)
+        else:
+            df_raw = pd.read_excel(io.BytesIO(file_bytes), header=None, dtype=str)
+    except Exception as e:
+        return {"success": False, "error": f"Failed to read section spreadsheet: {str(e)}"}
+
+    if df_raw.empty:
+        return {"success": False, "error": "The uploaded section spreadsheet is empty."}
+
+    # Find header row
+    header_row_idx = 0
+    col_map: Dict[str, int] = {}
+    for r_idx in range(min(10, len(df_raw))):
+        row_vals = [str(v or "").lower().strip() for v in df_raw.iloc[r_idx]]
+        has_sec = any("section" in v or "name" in v or "sec" in v for v in row_vals)
+        has_gr = any("grade" in v or "level" in v or "gr" in v for v in row_vals)
+        if has_sec or has_gr:
+            header_row_idx = r_idx
+            for c_idx, val in enumerate(row_vals):
+                if any(k in val for k in ("section", "sec name", "class name")) and "name" not in col_map:
+                    col_map["name"] = c_idx
+                elif any(k in val for k in ("grade", "level", "gr")) and "grade_level" not in col_map:
+                    col_map["grade_level"] = c_idx
+                elif any(k in val for k in ("program", "track", "curriculum")) and "program_type" not in col_map:
+                    col_map["program_type"] = c_idx
+                elif any(k in val for k in ("room", "classroom", "rm")) and "room_number" not in col_map:
+                    col_map["room_number"] = c_idx
+                elif any(k in val for k in ("adviser", "teacher", "faculty")) and "adviser" not in col_map:
+                    col_map["adviser"] = c_idx
+            break
+
+    # Defaults if headers not fully identified
+    name_col = col_map.get("name", 0)
+    grade_col = col_map.get("grade_level", 1 if len(df_raw.columns) > 1 else None)
+    track_col = col_map.get("program_type", 2 if len(df_raw.columns) > 2 else None)
+    room_col = col_map.get("room_number", 3 if len(df_raw.columns) > 3 else None)
+    adv_col = col_map.get("adviser", 4 if len(df_raw.columns) > 4 else None)
+
+    existing_sections = session.exec(select(Section)).all()
+    existing_by_name = {s.name.strip().lower(): s for s in existing_sections}
+    all_teachers = session.exec(select(Teacher)).all()
+
+    preview_rows = []
+    seen_in_file = set()
+    stats = {
+        "total": 0,
+        "valid": 0,
+        "new": 0,
+        "updating": 0,
+        "advisers_matched": 0,
+    }
+
+    for r_idx in range(header_row_idx + 1, len(df_raw)):
+        row = df_raw.iloc[r_idx]
+        raw_name = str(row[name_col] or "").strip() if name_col is not None and name_col < len(row) else ""
+        if not raw_name or raw_name.lower() in ("nan", "none", "null", ""):
+            continue
+
+        raw_grade = str(row[grade_col] or "").strip() if grade_col is not None and grade_col < len(row) else ""
+        raw_track = str(row[track_col] or "").strip() if track_col is not None and track_col < len(row) else "BEC"
+        raw_room = str(row[room_col] or "").strip() if room_col is not None and room_col < len(row) else ""
+        raw_adv = str(row[adv_col] or "").strip() if adv_col is not None and adv_col < len(row) else ""
+
+        # Parse grade level (default 7 if missing, or extract digit from 'Grade 7' or '7')
+        m_gr = re.search(r"\b(7|8|9|10)\b", f"{raw_grade} {raw_name}")
+        grade_num = int(m_gr.group(1)) if m_gr else 7
+
+        # Normalize track
+        track_upper = raw_track.upper().strip()
+        if any(t in track_upper for t in ("STE", "SCIENCE")):
+            prog_type = "STE"
+        elif any(t in track_upper for t in ("SPA", "ARTS")):
+            prog_type = "SPA"
+        elif any(t in track_upper for t in ("SPJ", "JOURNALISM")):
+            prog_type = "SPJ"
+        elif any(t in track_upper for t in ("SPS", "SPORTS")):
+            prog_type = "SPS"
+        else:
+            prog_type = "BEC"
+
+        # Check existing section in database
+        clean_name_key = raw_name.lower().strip()
+        existing_sec = existing_by_name.get(clean_name_key)
+
+        # Match adviser
+        matched_adv = match_adviser_name(raw_adv, all_teachers) if raw_adv and raw_adv.lower() not in ("nan", "none", "") else None
+        if matched_adv:
+            stats["advisers_matched"] += 1
+
+        is_dup = clean_name_key in seen_in_file
+        seen_in_file.add(clean_name_key)
+
+        if is_dup:
+            status_code = "DUPLICATE_IN_FILE"
+            msg = f"Duplicate section '{raw_name}' in spreadsheet."
+        elif existing_sec:
+            status_code = "UPDATING"
+            msg = f"Will update existing Section ID {existing_sec.id}."
+            stats["updating"] += 1
+            stats["valid"] += 1
+        else:
+            status_code = "NEW"
+            msg = f"Will create new Grade {grade_num} {prog_type} section."
+            stats["new"] += 1
+            stats["valid"] += 1
+
+        stats["total"] += 1
+
+        preview_rows.append({
+            "row_index": r_idx,
+            "section_id": existing_sec.id if existing_sec else None,
+            "name": raw_name,
+            "grade_level": grade_num,
+            "program_type": prog_type,
+            "room_number": raw_room if raw_room and raw_room.lower() not in ("nan", "none") else "",
+            "raw_adviser": raw_adv if raw_adv and raw_adv.lower() not in ("nan", "none") else None,
+            "adviser_id": matched_adv.id if matched_adv else None,
+            "adviser_name": matched_adv.name if matched_adv else (raw_adv if raw_adv and raw_adv.lower() not in ("nan", "none") else None),
+            "adviser_matched": matched_adv is not None,
+            "status": status_code,
+            "status_message": msg,
+        })
+
+    return {
+        "success": True,
+        "filename": filename,
+        "detected_columns": {
+            "name": str(df_raw.iloc[header_row_idx, name_col]) if name_col < len(df_raw.columns) else None,
+            "grade_level": str(df_raw.iloc[header_row_idx, grade_col]) if grade_col is not None and grade_col < len(df_raw.columns) else None,
+            "program_type": str(df_raw.iloc[header_row_idx, track_col]) if track_col is not None and track_col < len(df_raw.columns) else None,
+            "room_number": str(df_raw.iloc[header_row_idx, room_col]) if room_col is not None and room_col < len(df_raw.columns) else None,
+            "adviser": str(df_raw.iloc[header_row_idx, adv_col]) if adv_col is not None and adv_col < len(df_raw.columns) else None,
+        },
+        "rows": preview_rows,
+        "stats": stats,
+    }
 
 
-def import_sections_from_items(items: List[Dict[str, Any]], update_existing: bool, session: Session) -> Dict[str, Any]:
-    return {"success": True, "created_count": 0, "updated_count": 0, "skipped_count": 0, "total_processed": len(items)}
+def import_sections_from_items(
+    items: List[Dict[str, Any]],
+    update_existing: bool,
+    session: Session,
+) -> Dict[str, Any]:
+    """
+    Batch persist verified section items from Excel preview.
+    Creates new sections or updates existing sections, links advisers, and synchronizes Monday P1 Homeroom slots.
+    """
+    created_count = 0
+    updated_count = 0
+    skipped_count = 0
+
+    homeroom_sub = next(
+        (s for s in session.exec(select(Subject)).all() if "homeroom" in s.name.lower() or "guidance" in s.name.lower()),
+        None,
+    )
+
+    for item in items:
+        name = str(item.get("name") or "").strip()
+        if not name:
+            skipped_count += 1
+            continue
+
+        grade_lvl = int(item.get("grade_level", 7))
+        prog_type = str(item.get("program_type", "BEC")).upper().strip()
+        room_num = str(item.get("room_number", "")).strip()
+        adv_id = item.get("adviser_id")
+
+        # Check existing section by name
+        existing_sec = session.exec(select(Section).where(Section.name == name)).first()
+        if not existing_sec and item.get("section_id"):
+            existing_sec = session.get(Section, item["section_id"])
+
+        if existing_sec:
+            if not update_existing:
+                skipped_count += 1
+                continue
+            existing_sec.grade_level = grade_lvl
+            existing_sec.program_type = prog_type
+            if room_num:
+                existing_sec.room_number = room_num
+            session.add(existing_sec)
+            target_sec = existing_sec
+            updated_count += 1
+        else:
+            new_sec = Section(
+                name=name,
+                grade_level=grade_lvl,
+                program_type=prog_type,
+                room_number=room_num or None,
+            )
+            session.add(new_sec)
+            session.flush()
+            target_sec = new_sec
+            created_count += 1
+
+        # Link Class Adviser
+        if adv_id:
+            adv_teacher = session.get(Teacher, adv_id)
+            if adv_teacher:
+                adv_teacher.advisory_section_id = target_sec.id
+                adv_teacher.is_adviser = True
+                session.add(adv_teacher)
+
+                # Synchronize Monday Period 1 Homeroom Guidance Program slot
+                if homeroom_sub:
+                    hm_slot = session.exec(
+                        select(ScheduleSlot).where(
+                            ScheduleSlot.section_id == target_sec.id,
+                            ScheduleSlot.day_of_week == 0,
+                            ScheduleSlot.period_index == 1,
+                        )
+                    ).first()
+                    if hm_slot:
+                        hm_slot.teacher_id = adv_teacher.id
+                        hm_slot.subject_id = homeroom_sub.id
+                        hm_slot.is_locked = True
+                        session.add(hm_slot)
+                    else:
+                        new_hm_slot = ScheduleSlot(
+                            section_id=target_sec.id,
+                            teacher_id=adv_teacher.id,
+                            subject_id=homeroom_sub.id,
+                            day_of_week=0,
+                            period_index=1,
+                            is_locked=True,
+                        )
+                        session.add(new_hm_slot)
+
+    session.commit()
+
+    return {
+        "success": True,
+        "created_count": created_count,
+        "updated_count": updated_count,
+        "skipped_count": skipped_count,
+        "total_processed": len(items),
+        "message": f"Successfully processed {len(items)} sections: {created_count} created, {updated_count} updated, {skipped_count} skipped.",
+    }
