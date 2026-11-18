@@ -6,7 +6,7 @@ Enforces RA 4670 Magna Carta limits (<= 6 hours/day actual teaching).
 
 import re
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 
