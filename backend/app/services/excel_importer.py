@@ -218,14 +218,24 @@ def parse_schedule_cell(cell_val: Any) -> Tuple[Optional[str], Optional[str]]:
 # =============================================================================
 # SECTION SCHEDULE: EXCEL TEMPLATE GENERATOR
 # =============================================================================
-def generate_section_schedule_template(section: Section, session: Session, max_periods: int = 9) -> io.BytesIO:
+def generate_section_schedule_template(
+    section: Section,
+    session: Session,
+    max_periods: int = 9,
+    blank_slate: Optional[bool] = None,
+) -> io.BytesIO:
     """
-    Generates a high-quality, pre-styled official DepEd Class Program / Section Schedule (.xlsx)
-    template tailored to the specific section's grade level and program track, extended to 9 periods.
+    Generates a clean, pre-styled official DepEd Class Program / Section Schedule (.xlsx)
+    template extended to 9 periods. When blank_slate is True or section_id is 0, outputs
+    a blank slate template without pre-filled section slots.
     """
+    if blank_slate is None:
+        blank_slate = (section.id == 0 or not section.name or "template" in section.name.lower() or "blank" in section.name.lower())
+
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = f"Sched - {section.name}"[:31]
+    tab_title = "Schedule Template" if blank_slate or section.id == 0 else f"Sched - {section.name}"
+    ws.title = tab_title[:31]
 
     # Color Palette: Velvet Plum & Professional Slate
     title_font = Font(name="Calibri", size=11, bold=True, color="2E0249")
@@ -251,17 +261,24 @@ def generate_section_schedule_template(section: Section, session: Session, max_p
     ws["A1"].font = title_font
     ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
 
+    # Find Adviser
+    adv_name = "[Class Adviser]"
+    if section.id and section.id > 0:
+        adviser = session.exec(select(Teacher).where(Teacher.advisory_section_id == section.id)).first()
+        if adviser:
+            adv_name = adviser.name
+
     ws.merge_cells("A2:G2")
-    ws["A2"] = f"SECTION CLASS PROGRAM & WEEKLY TIMETABLE: {section.name.upper()}"
+    if blank_slate or section.id == 0 or not section.name or "template" in section.name.lower():
+        ws["A2"] = "SECTION CLASS PROGRAM & WEEKLY TIMETABLE TEMPLATE"
+    else:
+        ws["A2"] = f"SECTION CLASS PROGRAM & WEEKLY TIMETABLE: {section.name.upper()}"
     ws["A2"].font = sub_title_font
     ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
 
-    # Find Adviser
-    adviser = session.exec(select(Teacher).where(Teacher.advisory_section_id == section.id)).first()
-    adv_name = adviser.name if adviser else "Unassigned"
-
     ws.merge_cells("A3:G3")
-    ws["A3"] = f"Grade Level: {section.grade_level}  |  Program Track: {section.program_type}  |  Classroom: {section.room_number}  |  Class Adviser: {adv_name}"
+    sec_name_label = section.name if section.id > 0 and section.name else "[Section Name]"
+    ws["A3"] = f"Section: {sec_name_label}  |  Grade Level: {section.grade_level}  |  Program Track: {section.program_type}  |  Classroom: {section.room_number or '[Room]'}  |  Class Adviser: {adv_name}"
     ws["A3"].font = meta_font
     ws["A3"].alignment = Alignment(horizontal="center", vertical="center")
 
@@ -292,11 +309,15 @@ def generate_section_schedule_template(section: Section, session: Session, max_p
         max_periods = 9
     max_periods = min(9, max(7, max_periods))
 
-    # Load existing schedule slots for this section to pre-fill template
-    existing_slots = session.exec(select(ScheduleSlot).where(ScheduleSlot.section_id == section.id)).all()
-    slot_map = {(s.day_of_week, s.period_index): s for s in existing_slots}
-    subj_map = {s.id: s.name for s in session.exec(select(Subject)).all()}
-    teacher_map = {t.id: t.name for t in session.exec(select(Teacher)).all()}
+    # Load existing schedule slots ONLY if blank_slate is False
+    slot_map = {}
+    subj_map = {}
+    teacher_map = {}
+    if not blank_slate and section.id and section.id > 0:
+        existing_slots = session.exec(select(ScheduleSlot).where(ScheduleSlot.section_id == section.id)).all()
+        slot_map = {(s.day_of_week, s.period_index): s for s in existing_slots}
+        subj_map = {s.id: s.name for s in session.exec(select(Subject)).all()}
+        teacher_map = {t.id: t.name for t in session.exec(select(Teacher)).all()}
 
     row_cursor = 6
 
@@ -332,9 +353,6 @@ def generate_section_schedule_template(section: Section, session: Session, max_p
             if slot and slot.subject_id in subj_map and slot.teacher_id in teacher_map:
                 cell_val = f"{subj_map[slot.subject_id]}\n{teacher_map[slot.teacher_id]}"
                 is_locked_cell = (day_idx == 0 and p == 1) or slot.is_locked
-            elif day_idx == 0 and p == 1:
-                cell_val = f"Homeroom Guidance Program\n{adv_name}"
-                is_locked_cell = True
             else:
                 cell_val = ""
                 is_locked_cell = False
@@ -348,6 +366,7 @@ def generate_section_schedule_template(section: Section, session: Session, max_p
 
         for c_idx in (1, 2):
             ws.cell(row=row_cursor, column=c_idx).border = grid_border
+            ws.cell(row=row_cursor, column=c_idx).font = data_font
             ws.cell(row=row_cursor, column=c_idx).font = data_font
 
         row_cursor += 1

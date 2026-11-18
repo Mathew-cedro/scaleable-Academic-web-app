@@ -780,16 +780,18 @@ export const api = {
 
   async downloadSectionScheduleTemplateExcel(
     sectionId: number = 0,
-    sectionName: string = "Section",
+    sectionName: string = "Blank_Slate",
     gradeLevel?: number,
     programType?: string,
     maxPeriods: number = 9,
+    blankSlate: boolean = true,
   ): Promise<void> {
     const params = new URLSearchParams();
     if (sectionName) params.append("name", sectionName);
     if (gradeLevel) params.append("grade_level", String(gradeLevel));
     if (programType) params.append("program_type", programType);
     if (maxPeriods) params.append("max_periods", String(maxPeriods));
+    if (blankSlate !== undefined) params.append("blank_slate", String(blankSlate));
 
     const qs = params.toString() ? `?${params.toString()}` : "";
     const url = `${API_BASE}/sections/${sectionId}/schedule-template-excel${qs}`;
@@ -801,7 +803,8 @@ export const api = {
     const downloadUrl = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = downloadUrl;
-    const safeName = sectionName.replace(/[^a-zA-Z0-9_\-]/g, "_");
+    const isBlank = sectionId === 0 || blankSlate || sectionName.toLowerCase() === "blank_slate";
+    const safeName = isBlank ? "Blank_Slate" : sectionName.replace(/[^a-zA-Z0-9_\-]/g, "_");
     link.setAttribute("download", `Schedule_Template_${safeName}.xlsx`);
     document.body.appendChild(link);
     link.click();

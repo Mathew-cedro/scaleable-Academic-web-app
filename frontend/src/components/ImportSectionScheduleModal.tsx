@@ -281,26 +281,15 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
       setDownloadingTemplate(true);
       setError(null);
 
-      if (sectionOption === "NEW") {
-        // Download 9-period template even if fields are left empty
-        const secName = newSectionName.trim() || `Grade ${newSectionGrade} - New Section`;
-        await api.downloadSectionScheduleTemplateExcel(
-          0,
-          secName,
-          newSectionGrade,
-          newSectionTrack,
-          9
-        );
-      } else {
-        if (!currentSection) return;
-        await api.downloadSectionScheduleTemplateExcel(
-          currentSection.id,
-          currentSection.name,
-          currentSection.grade_level || currentSection.gradeLevel,
-          currentSection.program_type,
-          9
-        );
-      }
+      // Always download a clean blank slate template with empty periods ready for scheduling
+      await api.downloadSectionScheduleTemplateExcel(
+        0,
+        "Blank_Slate",
+        sectionOption === "NEW" ? newSectionGrade : (currentSection?.grade_level || currentSection?.gradeLevel || 7),
+        sectionOption === "NEW" ? newSectionTrack : (currentSection?.program_type || "BEC"),
+        9,
+        true
+      );
     } catch (err: any) {
       setError(err?.message || "Failed to download schedule template.");
     } finally {
