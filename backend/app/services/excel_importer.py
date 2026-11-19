@@ -386,16 +386,33 @@ def parse_and_preview_section_schedule_excel(
     section_id: int,
     session: Session,
     sheet_name: Optional[str] = None,
+    section_name: Optional[str] = None,
+    grade_level: Optional[int] = None,
+    program_type: Optional[str] = None,
+    adviser_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Parses an uploaded .xlsx, .xls, or .csv schedule file for a target Section.
     Supports multi-sheet workbooks, timetable grid matrices, and tabular slot lists.
     Audits every slot against existing section schedules, statutory caps (RA 4670),
     and adviser Homeroom locks. Returns an interactive preview payload with in-modal clash resolution options.
+    Supports section_id=0 for previewing a new section schedule before section creation.
     """
-    section = session.get(Section, section_id)
-    if not section:
-        return {"success": False, "error": f"Section ID {section_id} not found."}
+    if section_id == 0:
+        sec_name = section_name.strip() if section_name and section_name.strip() else "New Section"
+        section = Section(
+            id=0,
+            name=sec_name,
+            grade_level=grade_level if grade_level else 7,
+            program_type=program_type.strip().upper() if program_type and program_type.strip() else "BEC",
+            room_number="Room 101",
+        )
+        adviser = session.get(Teacher, adviser_id) if adviser_id else None
+    else:
+        section = session.get(Section, section_id)
+        if not section:
+            return {"success": False, "error": f"Section ID {section_id} not found."}
+        adviser = session.exec(select(Teacher).where(Teacher.advisory_section_id == section.id)).first()
 
     all_subjects = session.exec(select(Subject)).all()
     all_teachers = session.exec(select(Teacher)).all()
@@ -405,11 +422,11 @@ def parse_and_preview_section_schedule_excel(
     for t in active_teachers:
         teachers_by_dept.setdefault(t.department_id, []).append(t)
 
-    # Class Adviser for this section
-    adviser = session.exec(select(Teacher).where(Teacher.advisory_section_id == section.id)).first()
-
     # Pre-map other section slots to detect teacher double-booking
-    other_slots = session.exec(select(ScheduleSlot).where(ScheduleSlot.section_id != section.id)).all()
+    if section.id > 0:
+        other_slots = session.exec(select(ScheduleSlot).where(ScheduleSlot.section_id != section.id)).all()
+    else:
+        other_slots = session.exec(select(ScheduleSlot)).all()
     teacher_busy_map: Dict[Tuple[int, int, int], int] = {}
     teacher_daily_loads: Dict[Tuple[int, int], int] = {}
     sec_names_map = {s.id: s.name for s in session.exec(select(Section)).all()}

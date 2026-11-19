@@ -812,7 +812,17 @@ export const api = {
     window.URL.revokeObjectURL(downloadUrl);
   },
 
-  async previewSectionScheduleExcel(sectionId: number, file: File, sheetName?: string): Promise<{
+  async previewSectionScheduleExcel(
+    sectionId: number,
+    file: File,
+    sheetName?: string,
+    newSectionMeta?: {
+      name?: string;
+      grade_level?: number;
+      program_type?: string;
+      adviser_id?: number | null;
+    }
+  ): Promise<{
     success: boolean;
     section_id: number;
     section_name: string;
@@ -853,6 +863,18 @@ export const api = {
     formData.append("file", file);
     if (sheetName) {
       formData.append("sheet_name", sheetName);
+    }
+    if (newSectionMeta?.name) {
+      formData.append("name", newSectionMeta.name);
+    }
+    if (newSectionMeta?.grade_level) {
+      formData.append("grade_level", String(newSectionMeta.grade_level));
+    }
+    if (newSectionMeta?.program_type) {
+      formData.append("program_type", newSectionMeta.program_type);
+    }
+    if (newSectionMeta?.adviser_id) {
+      formData.append("adviser_id", String(newSectionMeta.adviser_id));
     }
     const res = await fetch(`${API_BASE}/sections/${sectionId}/preview-schedule-excel`, {
       method: "POST",

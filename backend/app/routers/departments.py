@@ -573,22 +573,60 @@ async def preview_section_schedule_excel(
     section_id: int,
     file: UploadFile = File(...),
     sheet_name: Optional[str] = Form(None),
+    name: Optional[str] = Form(None),
+    grade_level: Optional[int] = Form(None),
+    program_type: Optional[str] = Form(None),
+    adviser_id: Optional[int] = Form(None),
     session: Session = Depends(get_session),
 ):
     """
     Parse an uploaded section schedule spreadsheet (.xlsx, .xls, .csv),
     audit slots against teacher double-booking, RA 4670, and DepEd DO 009,
     and return an interactive preview payload.
+    Supports section_id=0 for previewing a schedule before a new section is created.
     """
     contents = await file.read()
     filename = file.filename or "schedule.xlsx"
-    result = parse_and_preview_section_schedule_excel(contents, filename, section_id, session, sheet_name=sheet_name)
+    result = parse_and_preview_section_schedule_excel(
+        contents,
+        filename,
+        section_id,
+        session,
+        sheet_name=sheet_name,
+        section_name=name,
+        grade_level=grade_level,
+        program_type=program_type,
+        adviser_id=adviser_id,
+    )
     if not result.get("success"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=result.get("error", "Failed to parse section schedule spreadsheet."),
         )
     return result
+
+
+@router.post("/sections/preview-schedule-excel")
+async def preview_new_section_schedule_excel(
+    file: UploadFile = File(...),
+    sheet_name: Optional[str] = Form(None),
+    name: Optional[str] = Form(None),
+    grade_level: Optional[int] = Form(None),
+    program_type: Optional[str] = Form(None),
+    adviser_id: Optional[int] = Form(None),
+    session: Session = Depends(get_session),
+):
+    """Convenience endpoint to preview schedule for a new section (section_id=0)."""
+    return await preview_section_schedule_excel(
+        section_id=0,
+        file=file,
+        sheet_name=sheet_name,
+        name=name,
+        grade_level=grade_level,
+        program_type=program_type,
+        adviser_id=adviser_id,
+        session=session,
+    )
 
 
 @router.post("/sections/{section_id}/import-schedule-excel")

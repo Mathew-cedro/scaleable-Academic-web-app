@@ -18,6 +18,7 @@ import {
   BookOpen,
   User,
   Check,
+  Sparkles,
 } from "lucide-react";
 import { api } from "../api/client";
 
@@ -96,7 +97,7 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
   const [newSectionTrack, setNewSectionTrack] = useState<string>("BEC");
   const [newSectionRoom, setNewSectionRoom] = useState<string>("");
   const [newSectionAdviserId, setNewSectionAdviserId] = useState<number | "">("");
-  const [creatingSection, setCreatingSection] = useState(false);
+  const [nameValidationError, setNameValidationError] = useState(false);
 
   // References and metadata
   const [curriculumSubjects, setCurriculumSubjects] = useState<any[]>([]);
@@ -240,42 +241,6 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
     };
   };
 
-  const handleCreateNewSection = async (customName?: string): Promise<number | null> => {
-    const trimmed = (customName !== undefined ? customName : newSectionName).trim();
-    const finalName = trimmed || `Grade ${newSectionGrade} - Section ${localSections.length + 1}`;
-    try {
-      setCreatingSection(true);
-      setError(null);
-      const created = await api.createSection({
-        name: finalName,
-        grade_level: Number(newSectionGrade),
-        program_type: newSectionTrack,
-        room_number: newSectionRoom.trim() || `Room ${newSectionGrade}01`,
-        adviser_id: newSectionAdviserId ? Number(newSectionAdviserId) : null,
-      });
-
-      const newSecOption: SectionOption = {
-        id: created.id,
-        name: created.name,
-        grade_level: created.grade_level,
-        program_type: created.program_type,
-        room_number: created.room_number,
-      };
-
-      setLocalSections((prev) => [...prev, newSecOption]);
-      setSelectedSectionId(created.id);
-      setSectionOption("EXISTING");
-      setSuccessMessage(`Section "${created.name}" created successfully! Now ready to import its schedule.`);
-      window.dispatchEvent(new CustomEvent("schedmaster_sections_refresh"));
-      return created.id;
-    } catch (err: any) {
-      setError(err?.message || "Failed to create new section.");
-      return null;
-    } finally {
-      setCreatingSection(false);
-    }
-  };
-
   const handleDownloadTemplate = async () => {
     try {
       setDownloadingTemplate(true);
@@ -304,31 +269,33 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
       return;
     }
 
-    let targetId = selectedSectionId;
-
     if (sectionOption === "NEW") {
-      let secName = newSectionName.trim();
-      if (!secName) {
-        const baseName = selectedFile.name
-          .replace(/\.[^/.]+$/, "")
-          .replace(/^(?:Schedule_Template_|Schedule_)/i, "")
-          .replace(/_/g, " ")
-          .trim();
-        secName = baseName || `Grade ${newSectionGrade} - Section ${localSections.length + 1}`;
-        setNewSectionName(secName);
+      const trimmed = newSectionName.trim();
+      if (!trimmed) {
+        setError("Please enter a Section Name above before uploading the schedule.");
+        setNameValidationError(true);
+        return;
       }
-      const createdId = await handleCreateNewSection(secName);
-      if (!createdId) return;
-      targetId = createdId;
     }
 
+    setNameValidationError(false);
     setFile(selectedFile);
     setError(null);
     setSuccessMessage(null);
     setLoading(true);
 
     try {
-      const data = await api.previewSectionScheduleExcel(targetId, selectedFile);
+      let data;
+      if (sectionOption === "NEW") {
+        data = await api.previewSectionScheduleExcel(0, selectedFile, undefined, {
+          name: newSectionName.trim(),
+          grade_level: newSectionGrade,
+          program_type: newSectionTrack,
+          adviser_id: newSectionAdviserId ? Number(newSectionAdviserId) : null,
+        });
+      } else {
+        data = await api.previewSectionScheduleExcel(selectedSectionId, selectedFile);
+      }
       const incomingSlots: ParsedSlotItem[] = data.slots || [];
       setPreviewSlots(incomingSlots);
       setLayoutDetected(data.layout_detected || "GRID_MATRIX");
@@ -348,16 +315,25 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
     setLoading(true);
     setError(null);
     try {
-      const matchingSec = sections.find((s) => {
-        const cleanName = s.name.replace(/^(grade\s*\d+\s*[-–]\s*)/i, "").trim().toLowerCase();
-        return sheetName.toLowerCase().includes(cleanName) || s.name.toLowerCase().includes(sheetName.toLowerCase());
-      });
-      const targetSecId = matchingSec ? matchingSec.id : selectedSectionId;
-      if (matchingSec && matchingSec.id !== selectedSectionId) {
-        setSelectedSectionId(matchingSec.id);
+      let data;
+      if (sectionOption === "NEW") {
+        data = await api.previewSectionScheduleExcel(0, file, sheetName, {
+          name: newSectionName.trim(),
+          grade_level: newSectionGrade,
+          program_type: newSectionTrack,
+          adviser_id: newSectionAdviserId ? Number(newSectionAdviserId) : null,
+        });
+      } else {
+        const matchingSec = sections.find((s) => {
+          const cleanName = s.name.replace(/^(grade\s*\d+\s*[-–]\s*)/i, "").trim().toLowerCase();
+          return sheetName.toLowerCase().includes(cleanName) || s.name.toLowerCase().includes(sheetName.toLowerCase());
+        });
+        const targetSecId = matchingSec ? matchingSec.id : selectedSectionId;
+        if (matchingSec && matchingSec.id !== selectedSectionId) {
+          setSelectedSectionId(matchingSec.id);
+        }
+        data = await api.previewSectionScheduleExcel(targetSecId, file, sheetName);
       }
-
-      const data = await api.previewSectionScheduleExcel(targetSecId, file, sheetName);
       const incomingSlots: ParsedSlotItem[] = data.slots || [];
       setPreviewSlots(incomingSlots);
       setLayoutDetected(data.layout_detected || "GRID_MATRIX");
@@ -660,6 +636,16 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
 
   const handleConfirmImport = async () => {
     if (!previewSlots || previewSlots.length === 0) return;
+
+    if (sectionOption === "NEW") {
+      const trimmed = newSectionName.trim();
+      if (!trimmed) {
+        setError("Please enter a Section Name above before confirming.");
+        setNameValidationError(true);
+        return;
+      }
+    }
+
     setImporting(true);
     setError(null);
 
@@ -676,16 +662,53 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
         }));
 
       if (validSlots.length === 0) {
-        throw new Error("No valid instructional periods found to import. Please map unrecognized subjects and teachers first.");
+        throw new Error(
+          "No valid instructional periods found to import. Please map unrecognized subjects and teachers first."
+        );
       }
 
-      const res = await api.importSectionScheduleExcel(selectedSectionId, validSlots);
-      setSuccessMessage(res.message || `Successfully imported ${res.slots_imported} periods.`);
+      let targetSecId = selectedSectionId;
+      let finalSectionName = currentSection?.name || "Section";
+
+      // If New Section mode, create the section first in this continuous single flow
+      if (sectionOption === "NEW") {
+        const createdSec = await api.createSection({
+          name: newSectionName.trim(),
+          grade_level: Number(newSectionGrade),
+          program_type: newSectionTrack,
+          room_number: newSectionRoom.trim() || `Room ${newSectionGrade}01`,
+          adviser_id: newSectionAdviserId ? Number(newSectionAdviserId) : null,
+        });
+
+        targetSecId = createdSec.id;
+        finalSectionName = createdSec.name;
+
+        const newSecOption: SectionOption = {
+          id: createdSec.id,
+          name: createdSec.name,
+          grade_level: createdSec.grade_level,
+          program_type: createdSec.program_type,
+          room_number: createdSec.room_number,
+        };
+
+        setLocalSections((prev) => [...prev, newSecOption]);
+        setSelectedSectionId(createdSec.id);
+      }
+
+      const res = await api.importSectionScheduleExcel(targetSecId, validSlots);
+
+      setSuccessMessage(
+        sectionOption === "NEW"
+          ? `Section "${finalSectionName}" created and ${res.slots_imported} timetable periods imported successfully!`
+          : res.message || `Successfully imported ${res.slots_imported} periods.`
+      );
+
+      window.dispatchEvent(new CustomEvent("schedmaster_sections_refresh"));
 
       setTimeout(() => {
         if (onImportComplete) onImportComplete();
         onClose();
-      }, 1200);
+      }, 1300);
     } catch (err: any) {
       setError(err?.message || "Failed to commit section schedule.");
     } finally {
@@ -847,9 +870,24 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
                       type="text"
                       placeholder="e.g. Grade 7 - Diamond"
                       value={newSectionName}
-                      onChange={(e) => setNewSectionName(e.target.value)}
-                      className="w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-[#A91079]"
+                      onChange={(e) => {
+                        setNewSectionName(e.target.value);
+                        if (nameValidationError && e.target.value.trim()) {
+                          setNameValidationError(false);
+                          setError(null);
+                        }
+                      }}
+                      className={`w-full text-xs bg-white border rounded-lg px-3 py-2 font-bold text-slate-800 focus:outline-hidden focus:ring-2 ${
+                        nameValidationError
+                          ? "border-red-500 ring-2 ring-red-200 bg-red-50/50"
+                          : "border-slate-300 focus:ring-[#A91079]"
+                      }`}
                     />
+                    {nameValidationError && (
+                      <span className="text-[10px] text-red-600 font-bold mt-1 block">
+                        Section Name is required
+                      </span>
+                    )}
                   </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">
@@ -913,19 +951,10 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
                     </select>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleCreateNewSection()}
-                    disabled={creatingSection || !newSectionName.trim()}
-                    className="px-4 py-2 bg-[#2E0249] hover:bg-[#4A0E4E] disabled:bg-slate-300 text-white rounded-lg text-xs font-bold shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
-                  >
-                    {creatingSection ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Plus className="w-3.5 h-3.5" />
-                    )}
-                    <span>Create Section Now</span>
-                  </button>
+                  <div className="flex items-center gap-1.5 text-[11px] text-[#A91079] bg-purple-50 px-3 py-1.5 rounded-lg border border-purple-200 font-semibold">
+                    <Sparkles className="w-3.5 h-3.5 text-[#A91079]" />
+                    <span>Section will be created & schedule imported together upon confirmation.</span>
+                  </div>
                 </div>
               </div>
             )}
@@ -1482,7 +1511,11 @@ export const ImportSectionScheduleModal: React.FC<Props> = ({
                 )}
                 <span>
                   {importing
-                    ? "Importing Schedule..."
+                    ? sectionOption === "NEW"
+                      ? "Creating Section & Importing Schedule..."
+                      : "Importing Schedule..."
+                    : sectionOption === "NEW"
+                    ? `Create Section & Import Schedule (${previewSlots.filter((s) => s.subject_id && s.teacher_id).length} Valid Slots)`
                     : `Confirm & Import Schedule (${previewSlots.filter((s) => s.subject_id && s.teacher_id).length} Valid Slots)`}
                 </span>
               </button>
