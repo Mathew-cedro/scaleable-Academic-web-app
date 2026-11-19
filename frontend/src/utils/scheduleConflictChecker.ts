@@ -46,10 +46,12 @@ export interface Teacher {
 export interface SlotConflictInfo {
   hasConflict: boolean;
   hasDoubleBooking: boolean;
+  hasSectionDoubleBooking?: boolean;
   hasDailyOverload: boolean;
   hasRoomConflict: boolean;
   hasAdviserMismatch: boolean;
   hasTeacherOnLeave?: boolean;
+  hasUnassignedTeacher?: boolean;
   severity: "error" | "warning" | "info" | "none";
   badgeLabel: string;
   badgeTooltip: string;
@@ -57,6 +59,7 @@ export interface SlotConflictInfo {
   conflictingSections: string[];
   roomName?: string;
   conflictingRoomSections?: string[];
+  conflictingSectionClasses?: string[];
 }
 
 export interface RoomCollisionIncident {
@@ -106,16 +109,42 @@ export function evaluateSlotConflict(
   const teacherName = slot.teacher_name || teacher?.name || "Assigned Teacher";
   const dayName = DAYS_NAMES[slot.day_of_week] || `Day ${slot.day_of_week}`;
 
-  // 1. Check for Teacher Double-Booking (CRITICAL ERROR)
-  // Look for any other slot at the same day & period index with the same teacher_id but a different section
-  const doubleBookedSlots = allSlots.filter(
+  // 1. Check for Section Collision (Multiple subjects scheduled for same section at same day & period)
+  const sectionCollisions = allSlots.filter(
     (s) =>
       s.id !== slot.id &&
-      s.teacher_id === slot.teacher_id &&
+      s.section_id === slot.section_id &&
       s.day_of_week === slot.day_of_week &&
-      s.period_index === slot.period_index &&
-      s.section_id !== slot.section_id
+      s.period_index === slot.period_index
   );
+
+  if (sectionCollisions.length > 0) {
+    result.hasConflict = true;
+    result.hasSectionDoubleBooking = true;
+    result.severity = "error";
+    const clashingSubs = sectionCollisions.map((s) => s.subject_name || "Another Subject");
+    result.conflictingSectionClasses = clashingSubs;
+    result.badgeLabel = "Section Clash";
+    result.badgeTooltip = `Section Double-Booked: Multiple subjects (${[
+      slot.subject_name || "Current",
+      ...clashingSubs,
+    ].join(", ")}) scheduled simultaneously on ${dayName} Period ${slot.period_index}.`;
+  }
+
+  // 2. Check for Teacher Double-Booking (CRITICAL ERROR)
+  // Look for any other slot at the same day & period index with the same teacher_id but a different section
+  // Note: Only check when teacher_id is valid (> 0)
+  const doubleBookedSlots =
+    slot.teacher_id && slot.teacher_id > 0
+      ? allSlots.filter(
+          (s) =>
+            s.id !== slot.id &&
+            s.teacher_id === slot.teacher_id &&
+            s.day_of_week === slot.day_of_week &&
+            s.period_index === slot.period_index &&
+            s.section_id !== slot.section_id
+        )
+      : [];
 
   if (doubleBookedSlots.length > 0) {
     result.hasConflict = true;
@@ -127,38 +156,44 @@ export function evaluateSlotConflict(
         allSections.find((sec) => sec.id === s.section_id)?.name ||
         `Section #${s.section_id}`
     );
-    result.badgeLabel = "Collision";
+    result.badgeLabel = result.hasSectionDoubleBooking ? "Section & Teacher Clash" : "Collision";
     result.badgeTooltip = `Double-Booked: ${teacherName} is simultaneously scheduled in ${result.conflictingSections.join(
       ", "
     )} on ${dayName} Period ${slot.period_index}.`;
   }
 
-  // 2. Check for RA 4670 Daily Overload (WARNING)
+  // 3. Check for RA 4670 Daily Overload (WARNING)
   // Calculate total teaching hours for this teacher on this day across all sections
-  const dailySlots = allSlots.filter(
-    (s) => s.teacher_id === slot.teacher_id && s.day_of_week === slot.day_of_week
-  );
-  result.dailyHours = dailySlots.length;
-  const maxAllowed = teacher?.max_daily_hours || 6;
+  if (slot.teacher_id && slot.teacher_id > 0) {
+    const dailySlots = allSlots.filter(
+      (s) => s.teacher_id === slot.teacher_id && s.day_of_week === slot.day_of_week
+    );
+    result.dailyHours = dailySlots.length;
+    const maxAllowed = teacher?.max_daily_hours || 6;
 
-  if (result.dailyHours > maxAllowed) {
-    result.hasConflict = true;
-    result.hasDailyOverload = true;
-    if (result.severity !== "error") {
-      result.severity = "warning";
-      result.badgeLabel = `>6h Cap (${result.dailyHours}h)`;
-      result.badgeTooltip = `Workload Overload: ${teacherName} is scheduled for ${result.dailyHours} teaching hours on ${dayName} (Magna Carta cap is 6 hours/day).`;
+    if (result.dailyHours > maxAllowed) {
+      result.hasConflict = true;
+      result.hasDailyOverload = true;
+      if (result.severity !== "error") {
+        result.severity = "warning";
+        result.badgeLabel = `>6h Cap (${result.dailyHours}h)`;
+        result.badgeTooltip = `Workload Overload: ${teacherName} is scheduled for ${result.dailyHours} teaching hours on ${dayName} (Magna Carta cap is 6 hours/day).`;
+      }
     }
   }
 
-  // 3. Check for Room Collision (ERROR)
+  // 4. Check for Room Collision (ERROR)
   const effectiveRoom = (
     slot.room_number ||
     allSections.find((sec) => sec.id === slot.section_id)?.room_number ||
     ""
   ).trim();
 
-  if (effectiveRoom.length > 0) {
+  const isPlaceholderRoom =
+    !effectiveRoom ||
+    ["tba", "no room", "unassigned", "none", "room"].includes(effectiveRoom.toLowerCase());
+
+  if (!isPlaceholderRoom) {
     const roomCollisionSlots = allSlots.filter((s) => {
       if (s.id === slot.id || s.section_id === slot.section_id) return false;
       if (s.day_of_week !== slot.day_of_week || s.period_index !== slot.period_index) return false;
@@ -238,31 +273,39 @@ export function getSectionConflictStats(
   allSections: Section[]
 ): {
   collisionCount: number;
+  sectionCollisionCount: number;
   overloadCount: number;
   roomCollisionCount: number;
   adviserMismatchCount: number;
+  leaveCount: number;
   totalIssues: number;
 } {
   const sectionSlots = allSlots.filter((s) => s.section_id === sectionId);
   let collisionCount = 0;
+  let sectionCollisionCount = 0;
   let overloadCount = 0;
   let roomCollisionCount = 0;
   let adviserMismatchCount = 0;
+  let leaveCount = 0;
 
   sectionSlots.forEach((slot) => {
     const info = evaluateSlotConflict(slot, allSlots, allTeachers, allSections);
     if (info.hasDoubleBooking) collisionCount++;
+    if (info.hasSectionDoubleBooking) sectionCollisionCount++;
     if (info.hasDailyOverload) overloadCount++;
     if (info.hasRoomConflict) roomCollisionCount++;
     if (info.hasAdviserMismatch) adviserMismatchCount++;
+    if (info.hasTeacherOnLeave) leaveCount++;
   });
 
   return {
     collisionCount,
+    sectionCollisionCount,
     overloadCount,
     roomCollisionCount,
     adviserMismatchCount,
-    totalIssues: collisionCount + overloadCount + roomCollisionCount,
+    leaveCount,
+    totalIssues: collisionCount + sectionCollisionCount + overloadCount + roomCollisionCount + leaveCount,
   };
 }
 

@@ -44,6 +44,7 @@ export interface Teacher {
   position: string;
   is_adviser: boolean;
   advisory_section_id?: number | null;
+  status?: string;
 }
 
 interface Props {
@@ -68,22 +69,28 @@ export const MasterTimetableGrid = ({
   onEmptySlotClick,
 }: Props) => {
   const { t, isTagalog } = useLanguage();
-  const hasExtendedSlots = useMemo(() => {
-    return (allSlots || slots).some((s) => s.period_index >= 8);
+  const maxPeriodInSlots = useMemo(() => {
+    let maxP = 7;
+    (allSlots || slots).forEach((s) => {
+      if (s.period_index > maxP) maxP = s.period_index;
+    });
+    return maxP;
   }, [allSlots, slots]);
 
   const anySpecialTracks = useMemo(() => {
     return sections.some((s) => s.program_type && !["BEC", "REGULAR", "STANDARD", "GENERAL"].includes(s.program_type.trim().toUpperCase()));
   }, [sections]);
 
-  const maxPeriods = hasExtendedSlots || anySpecialTracks ? 9 : 7;
+  const maxPeriods = Math.max(7, Math.min(9, Math.max(maxPeriodInSlots, anySpecialTracks ? 9 : 7)));
   const periodHeaders = useMemo(() => getPeriodHeaders(durationMinutes, maxPeriods), [durationMinutes, maxPeriods]);
   const globalSlots = allSlots || slots;
 
   // State: Default to Monday for focused view, with toggle for All Days
   const [selectedDay, setSelectedDay] = useState<number | "ALL">(0);
   const [gradeFilter, setGradeFilter] = useState<number | "ALL">("ALL");
-  const [conflictFilter, setConflictFilter] = useState<"ALL" | "ANY_CONFLICT" | "ROOM_CLASH" | "TEACHER_CLASH">("ALL");
+  const [conflictFilter, setConflictFilter] = useState<
+    "ALL" | "ANY_CONFLICT" | "ROOM_CLASH" | "TEACHER_CLASH" | "SECTION_CLASH" | "ON_LEAVE" | "OVERLOAD"
+  >("ALL");
   const [searchQuery, setSearchQuery] = useState("");
 
   // Grade levels available
@@ -104,11 +111,28 @@ export const MasterTimetableGrid = ({
     return map;
   }, [slots, globalSlots, teachers, sections]);
 
-  // Section conflict metrics (room clashes & teacher collisions)
+  // Section conflict metrics (room clashes, collisions, leaves, overloads)
   const sectionConflictStats = useMemo(() => {
-    const stats = new Map<number, { roomClashes: number; teacherClashes: number; totalIssues: number }>();
+    const stats = new Map<
+      number,
+      {
+        roomClashes: number;
+        teacherClashes: number;
+        sectionClashes: number;
+        leaveIssues: number;
+        overloadIssues: number;
+        totalIssues: number;
+      }
+    >();
     sections.forEach((sec) => {
-      stats.set(sec.id, { roomClashes: 0, teacherClashes: 0, totalIssues: 0 });
+      stats.set(sec.id, {
+        roomClashes: 0,
+        teacherClashes: 0,
+        sectionClashes: 0,
+        leaveIssues: 0,
+        overloadIssues: 0,
+        totalIssues: 0,
+      });
     });
 
     slots.forEach((slot) => {
@@ -118,6 +142,9 @@ export const MasterTimetableGrid = ({
         if (secStat) {
           if (info.hasRoomConflict) secStat.roomClashes++;
           if (info.hasDoubleBooking) secStat.teacherClashes++;
+          if (info.hasSectionDoubleBooking) secStat.sectionClashes++;
+          if (info.hasTeacherOnLeave) secStat.leaveIssues++;
+          if (info.hasDailyOverload) secStat.overloadIssues++;
           secStat.totalIssues++;
         }
       }
@@ -131,15 +158,33 @@ export const MasterTimetableGrid = ({
     let totalIssues = 0;
     let roomClashes = 0;
     let teacherClashes = 0;
+    let sectionClashes = 0;
+    let leaveIssues = 0;
+    let overloadIssues = 0;
 
     slotConflictsMap.forEach((info) => {
       if (info.hasConflict) totalIssues++;
       if (info.hasRoomConflict) roomClashes++;
       if (info.hasDoubleBooking) teacherClashes++;
+      if (info.hasSectionDoubleBooking) sectionClashes++;
+      if (info.hasTeacherOnLeave) leaveIssues++;
+      if (info.hasDailyOverload) overloadIssues++;
     });
 
-    return { totalIssues, roomClashes, teacherClashes };
+    return { totalIssues, roomClashes, teacherClashes, sectionClashes, leaveIssues, overloadIssues };
   }, [slotConflictsMap]);
+
+  // Issue count for each day of the week (Monday=0 to Friday=4)
+  const dayIssueCounts = useMemo(() => {
+    const counts = [0, 0, 0, 0, 0];
+    slots.forEach((slot) => {
+      const info = slotConflictsMap.get(slot.id);
+      if (info && info.hasConflict && slot.day_of_week >= 0 && slot.day_of_week <= 4) {
+        counts[slot.day_of_week]++;
+      }
+    });
+    return counts;
+  }, [slots, slotConflictsMap]);
 
   // Filter sections by search, grade, and conflict filter
   const filteredSections = useMemo(() => {
@@ -151,6 +196,9 @@ export const MasterTimetableGrid = ({
       if (conflictFilter === "ANY_CONFLICT" && (!secStat || secStat.totalIssues === 0)) return false;
       if (conflictFilter === "ROOM_CLASH" && (!secStat || secStat.roomClashes === 0)) return false;
       if (conflictFilter === "TEACHER_CLASH" && (!secStat || secStat.teacherClashes === 0)) return false;
+      if (conflictFilter === "SECTION_CLASH" && (!secStat || secStat.sectionClashes === 0)) return false;
+      if (conflictFilter === "ON_LEAVE" && (!secStat || secStat.leaveIssues === 0)) return false;
+      if (conflictFilter === "OVERLOAD" && (!secStat || secStat.overloadIssues === 0)) return false;
 
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase().trim();
@@ -171,11 +219,14 @@ export const MasterTimetableGrid = ({
 
   const visibleDays = selectedDay === "ALL" ? [0, 1, 2, 3, 4] : [selectedDay];
 
-  // Map slots: `${section_id}_${day}_${period}` -> slot
+  // Map slots: `${section_id}_${day}_${period}` -> ScheduleSlot[]
   const slotMap = useMemo(() => {
-    const map = new Map<string, ScheduleSlot>();
+    const map = new Map<string, ScheduleSlot[]>();
     slots.forEach((s) => {
-      map.set(`${s.section_id}_${s.day_of_week}_${s.period_index}`, s);
+      const key = `${s.section_id}_${s.day_of_week}_${s.period_index}`;
+      const arr = map.get(key) || [];
+      arr.push(s);
+      map.set(key, arr);
     });
     return map;
   }, [slots]);
@@ -187,10 +238,11 @@ export const MasterTimetableGrid = ({
       {/* Search & Day Filter Control Bar */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3 no-print">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          {/* Day Tabs */}
+          {/* Day Tabs with Issue Indicators */}
           <div className="flex items-center gap-1 overflow-x-auto no-scrollbar p-1 bg-[#F3E5F2] rounded-2xl">
             {[t.days.monday, t.days.tuesday, t.days.wednesday, t.days.thursday, t.days.friday].map((dayName, idx) => {
               const isSelected = selectedDay === idx;
+              const dayIssues = dayIssueCounts[idx];
               return (
                 <button
                   key={idx}
@@ -203,19 +255,41 @@ export const MasterTimetableGrid = ({
                   }`}
                 >
                   <span>{dayName}</span>
+                  {dayIssues > 0 && (
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[9px] font-black font-mono transition ${
+                        isSelected
+                          ? "bg-white text-rose-700 shadow-2xs"
+                          : "bg-rose-600 text-white animate-pulse"
+                      }`}
+                      title={`${dayIssues} conflict issue${dayIssues > 1 ? "s" : ""} on ${dayName}`}
+                    >
+                      {dayIssues}
+                    </span>
+                  )}
                 </button>
               );
             })}
             <button
               type="button"
               onClick={() => setSelectedDay("ALL")}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
                 selectedDay === "ALL"
                   ? "bg-[#A91079] text-white shadow-2xs"
                   : "text-[#703372] hover:text-[#2E0249] hover:bg-[#E5CCE3]"
               }`}
             >
-              {t.days.allDays}
+              <span>{t.days.allDays}</span>
+              {totalConflictMetrics.totalIssues > 0 && (
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[9px] font-black font-mono ${
+                    selectedDay === "ALL" ? "bg-white text-rose-700 shadow-2xs" : "bg-rose-600 text-white"
+                  }`}
+                  title={`${totalConflictMetrics.totalIssues} total issues across all days`}
+                >
+                  {totalConflictMetrics.totalIssues}
+                </span>
+              )}
             </button>
           </div>
 
@@ -278,7 +352,7 @@ export const MasterTimetableGrid = ({
           {/* Conflict Filter Chips */}
           <div className="flex items-center gap-1.5 flex-wrap">
             {totalConflictMetrics.totalIssues > 0 && (
-              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200 flex-wrap">
                 <button
                   type="button"
                   onClick={() => setConflictFilter("ALL")}
@@ -330,13 +404,64 @@ export const MasterTimetableGrid = ({
                     }
                     className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center gap-1 ${
                       conflictFilter === "TEACHER_CLASH"
-                        ? "bg-amber-600 text-white shadow-2xs"
-                        : "text-amber-800 hover:bg-amber-100"
+                        ? "bg-red-600 text-white shadow-2xs"
+                        : "text-red-800 hover:bg-red-100"
                     }`}
                     title="Filter to sections with teacher double-bookings"
                   >
                     <AlertTriangle className="w-3 h-3" />
                     <span>Teacher Clashes ({totalConflictMetrics.teacherClashes})</span>
+                  </button>
+                )}
+                {totalConflictMetrics.sectionClashes > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConflictFilter(conflictFilter === "SECTION_CLASH" ? "ALL" : "SECTION_CLASH")
+                    }
+                    className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center gap-1 ${
+                      conflictFilter === "SECTION_CLASH"
+                        ? "bg-rose-700 text-white shadow-2xs"
+                        : "text-rose-800 hover:bg-rose-100"
+                    }`}
+                    title="Filter to sections with multiple subjects at the same period"
+                  >
+                    <AlertTriangle className="w-3 h-3" />
+                    <span>Section Clashes ({totalConflictMetrics.sectionClashes})</span>
+                  </button>
+                )}
+                {totalConflictMetrics.leaveIssues > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConflictFilter(conflictFilter === "ON_LEAVE" ? "ALL" : "ON_LEAVE")
+                    }
+                    className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center gap-1 ${
+                      conflictFilter === "ON_LEAVE"
+                        ? "bg-amber-600 text-white shadow-2xs"
+                        : "text-amber-800 hover:bg-amber-100"
+                    }`}
+                    title="Filter to sections with faculty on leave"
+                  >
+                    <AlertTriangle className="w-3 h-3" />
+                    <span>On Leave ({totalConflictMetrics.leaveIssues})</span>
+                  </button>
+                )}
+                {totalConflictMetrics.overloadIssues > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConflictFilter(conflictFilter === "OVERLOAD" ? "ALL" : "OVERLOAD")
+                    }
+                    className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center gap-1 ${
+                      conflictFilter === "OVERLOAD"
+                        ? "bg-amber-500 text-white shadow-2xs"
+                        : "text-amber-700 hover:bg-amber-100"
+                    }`}
+                    title="Filter to sections with teachers exceeding 6h/day"
+                  >
+                    <AlertTriangle className="w-3 h-3" />
+                    <span>Overload ({totalConflictMetrics.overloadIssues})</span>
                   </button>
                 )}
               </div>
@@ -363,6 +488,12 @@ export const MasterTimetableGrid = ({
                     ? (isTagalog ? "Salungatan sa Silid" : "Room Clashes")
                     : conflictFilter === "TEACHER_CLASH"
                     ? (isTagalog ? "Salungatan sa Guro" : "Teacher Clashes")
+                    : conflictFilter === "SECTION_CLASH"
+                    ? "Section Overlaps"
+                    : conflictFilter === "ON_LEAVE"
+                    ? "Faculty On Leave"
+                    : conflictFilter === "OVERLOAD"
+                    ? "Workload Overload"
                     : (isTagalog ? "Mga Salungatan" : "Conflicts")}
                   )
                 </span>
@@ -379,7 +510,7 @@ export const MasterTimetableGrid = ({
                 <span>{t.grid.zeroClashes}</span>
               </span>
             ) : (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 {totalConflictMetrics.roomClashes > 0 && (
                   <button
                     type="button"
@@ -416,6 +547,56 @@ export const MasterTimetableGrid = ({
             </button>
           </div>
         </div>
+
+        {/* Global Conflict Breakdown Alert Banner */}
+        {totalMasterIssues > 0 && (
+          <div className="bg-rose-50/90 border-b border-rose-200 px-4 sm:px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs no-print">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="p-1 rounded-lg bg-rose-600 text-white shrink-0">
+                <AlertTriangle className="w-3.5 h-3.5" />
+              </span>
+              <span className="font-extrabold text-rose-950">
+                {totalMasterIssues} Timetable Issue{totalMasterIssues > 1 ? "s" : ""} Detected:
+              </span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {totalConflictMetrics.roomClashes > 0 && (
+                  <span className="px-2 py-0.5 rounded-md bg-purple-100 text-purple-900 font-bold text-[10px] border border-purple-200">
+                    {totalConflictMetrics.roomClashes} Room Clash{totalConflictMetrics.roomClashes > 1 ? "es" : ""}
+                  </span>
+                )}
+                {totalConflictMetrics.teacherClashes > 0 && (
+                  <span className="px-2 py-0.5 rounded-md bg-red-100 text-red-900 font-bold text-[10px] border border-red-200">
+                    {totalConflictMetrics.teacherClashes} Teacher Collision{totalConflictMetrics.teacherClashes > 1 ? "s" : ""}
+                  </span>
+                )}
+                {totalConflictMetrics.sectionClashes > 0 && (
+                  <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-900 font-bold text-[10px] border border-rose-200">
+                    {totalConflictMetrics.sectionClashes} Section Overlap{totalConflictMetrics.sectionClashes > 1 ? "s" : ""}
+                  </span>
+                )}
+                {totalConflictMetrics.leaveIssues > 0 && (
+                  <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-bold text-[10px] border border-amber-200">
+                    {totalConflictMetrics.leaveIssues} Faculty on Leave
+                  </span>
+                )}
+                {totalConflictMetrics.overloadIssues > 0 && (
+                  <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-bold text-[10px] border border-amber-200">
+                    {totalConflictMetrics.overloadIssues} Overload (&gt;6h)
+                  </span>
+                )}
+              </div>
+            </div>
+            {selectedDay !== "ALL" && (
+              <button
+                type="button"
+                onClick={() => setSelectedDay("ALL")}
+                className="px-2.5 py-1 bg-white hover:bg-rose-100/60 border border-rose-300 text-rose-800 rounded-lg font-bold text-[10px] transition cursor-pointer shadow-2xs"
+              >
+                Switch to All 5 Days
+              </button>
+            )}
+          </div>
+        )}
 
         {/* 2D Scrollable Matrix with Sticky Headers */}
         <div className="overflow-auto max-h-[calc(100vh-230px)] scrollbar-thin">
@@ -493,23 +674,37 @@ export const MasterTimetableGrid = ({
                           const secStat = sectionConflictStats.get(sec.id);
                           const hasRoomClash = secStat && secStat.roomClashes > 0;
                           const hasTeacherClash = secStat && secStat.teacherClashes > 0;
+                          const hasSectionClash = secStat && secStat.sectionClashes > 0;
+                          const hasLeaveIssue = secStat && secStat.leaveIssues > 0;
+                          const hasAnyIssue = secStat && secStat.totalIssues > 0;
 
                           return (
                             <div className="flex items-start gap-2.5">
                               <div
                                 className={`w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs shrink-0 border mt-0.5 ${
                                   hasRoomClash
-                                    ? "bg-purple-100 text-purple-800 border-purple-300"
-                                    : hasTeacherClash
-                                    ? "bg-red-100 text-red-800 border-red-300"
+                                    ? "bg-purple-100 text-purple-800 border-purple-300 ring-1 ring-purple-400"
+                                    : hasTeacherClash || hasSectionClash
+                                    ? "bg-red-100 text-red-800 border-red-300 ring-1 ring-red-400"
+                                    : hasAnyIssue
+                                    ? "bg-amber-100 text-amber-900 border-amber-300 ring-1 ring-amber-300"
                                     : "bg-[#F3E5F2] border-[#E5CCE3] text-[#A91079]"
                                 }`}
                               >
                                 G{sec.grade_level}
                               </div>
                               <div className="min-w-0 flex-1">
-                                <div className="font-extrabold text-xs text-slate-900 truncate">
-                                  {sec.name}
+                                <div className="font-extrabold text-xs text-slate-900 truncate flex items-center gap-1.5">
+                                  <span>{sec.name}</span>
+                                  {hasAnyIssue && (
+                                    <span
+                                      className="px-1.5 py-0.2 rounded-full text-[8px] font-black bg-rose-600 text-white flex items-center gap-0.5 shrink-0 shadow-2xs"
+                                      title={`${secStat.totalIssues} total issues for this section`}
+                                    >
+                                      <AlertTriangle className="w-2 h-2" />
+                                      <span>{secStat.totalIssues}</span>
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="flex flex-wrap items-center gap-1 mt-1">
                                   {/* Room Badge */}
@@ -540,6 +735,20 @@ export const MasterTimetableGrid = ({
                                       T-CLASH
                                     </span>
                                   )}
+
+                                  {/* Section Collision Tag */}
+                                  {hasSectionClash && (
+                                    <span className="text-[8px] font-black uppercase tracking-wider bg-red-600 text-white px-1 py-0.2 rounded">
+                                      SEC-CLASH
+                                    </span>
+                                  )}
+
+                                  {/* On Leave Tag */}
+                                  {hasLeaveIssue && (
+                                    <span className="text-[8px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 px-1 py-0.2 rounded">
+                                      ON LEAVE
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -547,36 +756,30 @@ export const MasterTimetableGrid = ({
                         })()}
                       </td>
 
-                      {/* Period 1 */}
-                      {renderMasterSlotCell(sec, d, 1, slotMap, onSlotClick, onSlotContextMenu, onEmptySlotClick, globalSlots, teachers, sections)}
-
-                      {/* Period 2 */}
-                      {renderMasterSlotCell(sec, d, 2, slotMap, onSlotClick, onSlotContextMenu, onEmptySlotClick, globalSlots, teachers, sections)}
+                      {/* Period 1 & 2 */}
+                      {periodHeaders.slice(0, 2).map((p) =>
+                        renderMasterSlotCell(sec, d, p.index, slotMap, onSlotClick, onSlotContextMenu, onEmptySlotClick, globalSlots, teachers, sections)
+                      )}
 
                       {/* Health Break Column */}
                       <td className="p-2 text-center bg-emerald-50/40 border-r border-slate-200 text-emerald-800 text-[10px] font-semibold">
                         Break
                       </td>
 
-                      {/* Period 3 */}
-                      {renderMasterSlotCell(sec, d, 3, slotMap, onSlotClick, onSlotContextMenu, onEmptySlotClick, globalSlots, teachers, sections)}
-
-                      {/* Period 4 */}
-                      {renderMasterSlotCell(sec, d, 4, slotMap, onSlotClick, onSlotContextMenu, onEmptySlotClick, globalSlots, teachers, sections)}
+                      {/* Period 3 & 4 */}
+                      {periodHeaders.slice(2, 4).map((p) =>
+                        renderMasterSlotCell(sec, d, p.index, slotMap, onSlotClick, onSlotContextMenu, onEmptySlotClick, globalSlots, teachers, sections)
+                      )}
 
                       {/* Lunch Break Column */}
                       <td className="p-2 text-center bg-amber-50/40 border-r border-slate-200 text-amber-800 text-[10px] font-semibold">
                         Lunch
                       </td>
 
-                      {/* Period 5 */}
-                      {renderMasterSlotCell(sec, d, 5, slotMap, onSlotClick, onSlotContextMenu, onEmptySlotClick, globalSlots, teachers, sections)}
-
-                      {/* Period 6 */}
-                      {renderMasterSlotCell(sec, d, 6, slotMap, onSlotClick, onSlotContextMenu, onEmptySlotClick, globalSlots, teachers, sections)}
-
-                      {/* Period 7 */}
-                      {renderMasterSlotCell(sec, d, 7, slotMap, onSlotClick, onSlotContextMenu, onEmptySlotClick, globalSlots, teachers, sections)}
+                      {/* Period 5 to maxPeriods (e.g. 5, 6, 7, 8, 9) */}
+                      {periodHeaders.slice(4).map((p) =>
+                        renderMasterSlotCell(sec, d, p.index, slotMap, onSlotClick, onSlotContextMenu, onEmptySlotClick, globalSlots, teachers, sections)
+                      )}
                     </tr>
                   )))}
                 </tbody>
@@ -590,13 +793,13 @@ export const MasterTimetableGrid = ({
 };
 
 /**
- * Period Slot Cell Renderer - styled cleanly like ProfileView.tsx
+ * Period Slot Cell Renderer - fully displays conflicts, clashes, leaves, and overloads
  */
 function renderMasterSlotCell(
   section: Section,
   day: number,
   period: number,
-  slotMap: Map<string, ScheduleSlot>,
+  slotMap: Map<string, ScheduleSlot[]>,
   onSlotClick?: (slot: ScheduleSlot) => void,
   onSlotContextMenu?: (slot: ScheduleSlot, e: React.MouseEvent) => void,
   onEmptySlotClick?: (sectionId: number, day: number, period: number) => void,
@@ -604,10 +807,10 @@ function renderMasterSlotCell(
   teachers: Teacher[] = [],
   sections: Section[] = []
 ) {
-  const slot = slotMap.get(`${section.id}_${day}_${period}`);
+  const matchingSlots = slotMap.get(`${section.id}_${day}_${period}`) || [];
   const isMondayHRGP = day === 0 && period === 1;
 
-  if (!slot && !isMondayHRGP) {
+  if (matchingSlots.length === 0 && !isMondayHRGP) {
     return (
       <td
         key={`${section.id}_${day}_${period}`}
@@ -628,18 +831,42 @@ function renderMasterSlotCell(
     );
   }
 
-  const conflict = evaluateSlotConflict(slot, allSlots, teachers, sections, isMondayHRGP);
+  // Handle synthesized Monday HRGP slot if no explicit slot exists in DB
+  const primarySlot =
+    matchingSlots.length > 0
+      ? matchingSlots[0]
+      : ({
+          id: 0,
+          section_id: section.id,
+          subject_id: 0,
+          teacher_id: 0,
+          day_of_week: day,
+          period_index: period,
+          is_locked: true,
+          subject_name: "HOMEROOM GUIDANCE PROGRAM",
+          teacher_name: "Adviser",
+          room_number: section.room_number,
+        } as ScheduleSlot);
 
-  const subjectTitle = slot?.subject_name || (isMondayHRGP ? "HRGP" : "Subject");
-  const teacherName = slot?.teacher_name || (isMondayHRGP ? "Adviser" : "Unassigned");
-  const roomNumber = slot?.room_number || section.room_number || "Room";
-  const effectiveRoom = (slot?.room_number || section.room_number || "").trim();
+  const conflict = evaluateSlotConflict(
+    matchingSlots.length > 0 ? primarySlot : null,
+    allSlots,
+    teachers,
+    sections,
+    isMondayHRGP
+  );
+
+  const isMultiCollision = matchingSlots.length > 1;
+  const subjectTitle = primarySlot?.subject_name || (isMondayHRGP ? "HRGP" : "Subject");
+  const teacherName = primarySlot?.teacher_name || (isMondayHRGP ? "Adviser" : "Unassigned");
+  const roomNumber = primarySlot?.room_number || section.room_number || "Room";
+  const effectiveRoom = (primarySlot?.room_number || section.room_number || "").trim();
 
   // Find the actual conflicting slots for this cell
   const clashingRoomSlots =
     conflict.hasRoomConflict && effectiveRoom
       ? allSlots.filter((s) => {
-          if (!slot || s.id === slot.id || s.section_id === slot.section_id) return false;
+          if (!primarySlot || s.id === primarySlot.id || s.section_id === primarySlot.section_id) return false;
           if (s.day_of_week !== day || s.period_index !== period) return false;
           const otherEffectiveRoom = (
             s.room_number ||
@@ -651,16 +878,28 @@ function renderMasterSlotCell(
       : [];
 
   const doubleBookedSlots =
-    conflict.hasDoubleBooking && slot
+    conflict.hasDoubleBooking && primarySlot && primarySlot.teacher_id > 0
       ? allSlots.filter(
           (s) =>
-            s.id !== slot.id &&
-            s.section_id !== slot.section_id &&
-            s.teacher_id === slot.teacher_id &&
+            s.id !== primarySlot.id &&
+            s.section_id !== primarySlot.section_id &&
+            s.teacher_id === primarySlot.teacher_id &&
             s.day_of_week === day &&
             s.period_index === period
         )
       : [];
+
+  const cellBorderColor = isMultiCollision || conflict.hasDoubleBooking || conflict.hasSectionDoubleBooking
+    ? "bg-red-50/95 border-red-400 ring-2 ring-red-400 hover:border-red-500"
+    : conflict.hasRoomConflict
+    ? "bg-purple-50/95 border-purple-400 ring-2 ring-purple-400 hover:border-purple-500"
+    : conflict.hasTeacherOnLeave || conflict.hasDailyOverload || conflict.severity === "warning"
+    ? "bg-amber-50/90 border-amber-400 ring-2 ring-amber-400 hover:border-amber-500"
+    : conflict.hasAdviserMismatch || conflict.severity === "info"
+    ? "bg-[#FDF2FA] border-[#A91079] ring-1 ring-[#A91079]"
+    : isMondayHRGP
+    ? "bg-[#FDF2FA] border-[#E5CCE3] hover:border-[#A91079]"
+    : "bg-white border-[#E5CCE3] hover:border-[#A91079] hover:shadow-xs";
 
   return (
     <td
@@ -668,42 +907,90 @@ function renderMasterSlotCell(
       className="p-1.5 border-r border-slate-200 last:border-r-0 align-top"
     >
       <div
-        onClick={() => slot && onSlotClick && onSlotClick(slot)}
+        onClick={() => primarySlot && onSlotClick && onSlotClick(primarySlot)}
         onContextMenu={(e) => {
-          if (slot && onSlotContextMenu) {
+          if (primarySlot && onSlotContextMenu) {
             e.preventDefault();
             e.stopPropagation();
-            onSlotContextMenu(slot, e);
+            onSlotContextMenu(primarySlot, e);
           }
         }}
-        className={`p-2.5 rounded-xl border transition shadow-2xs cursor-pointer ${
-          conflict.hasRoomConflict
-            ? "bg-purple-50/95 border-purple-300 ring-1 ring-purple-400 hover:border-purple-500"
-            : conflict.severity === "error"
-            ? "bg-red-50/95 border-red-300 ring-1 ring-red-400 hover:border-red-500"
-            : conflict.severity === "warning"
-            ? "bg-amber-50/80 border-amber-300 ring-1 ring-amber-300"
-            : isMondayHRGP
-            ? "bg-[#FDF2FA] border-[#E5CCE3] hover:border-[#A91079]"
-            : "bg-white border-[#E5CCE3] hover:border-[#A91079] hover:shadow-xs"
-        }`}
+        className={`p-2.5 rounded-xl border transition shadow-2xs cursor-pointer ${cellBorderColor}`}
         title={conflict.hasConflict ? `${conflict.badgeTooltip} (Click to edit)` : `${subjectTitle} • ${teacherName}`}
       >
+        {/* Top Conflict Badge if issue exists */}
+        {(conflict.hasConflict || isMultiCollision) && (
+          <div className="flex items-center justify-between gap-1 mb-1.5">
+            <span
+              className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider flex items-center gap-0.5 shadow-2xs ${
+                isMultiCollision || conflict.hasSectionDoubleBooking
+                  ? "bg-rose-700 text-white"
+                  : conflict.hasDoubleBooking
+                  ? "bg-red-600 text-white animate-pulse"
+                  : conflict.hasRoomConflict
+                  ? "bg-purple-600 text-white"
+                  : conflict.hasTeacherOnLeave
+                  ? "bg-amber-600 text-white"
+                  : conflict.hasDailyOverload
+                  ? "bg-amber-500 text-white"
+                  : "bg-[#A91079] text-white"
+              }`}
+            >
+              {conflict.hasRoomConflict ? (
+                <Building className="w-2.5 h-2.5 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+              )}
+              <span>
+                {isMultiCollision
+                  ? `Section Clash (${matchingSlots.length})`
+                  : conflict.badgeLabel || "Conflict"}
+              </span>
+            </span>
+            <span className="text-[9px] font-bold text-slate-500 font-mono px-1 rounded bg-slate-100/90 shrink-0">
+              {roomNumber}
+            </span>
+          </div>
+        )}
+
         {/* Scheduled Class Header */}
         <div className="flex items-center justify-between gap-1">
           <div className="font-extrabold text-xs text-slate-900 truncate">
-            {subjectTitle}
+            {subjectTitle === "HOMEROOM GUIDANCE PROGRAM" ? "HRGP" : subjectTitle}
           </div>
-          <span className="text-[9px] font-bold text-slate-500 font-mono px-1 rounded bg-slate-100/90 shrink-0">
-            {roomNumber}
-          </span>
+          {!conflict.hasConflict && !isMultiCollision && (
+            <span className="text-[9px] font-bold text-slate-500 font-mono px-1 rounded bg-slate-100/90 shrink-0">
+              {roomNumber}
+            </span>
+          )}
         </div>
 
         <div className="text-[11px] font-semibold text-[#A91079] truncate mt-0.5">
           {teacherName}
         </div>
 
-        {/* Conflicted Classes Showcase (Shows the actual other class colliding with this slot) */}
+        {/* Section Double Booking: Show all other classes colliding in this slot */}
+        {isMultiCollision && (
+          <div className="mt-2 p-1.5 rounded-lg bg-rose-100/95 border border-rose-300 text-rose-950 space-y-1 shadow-2xs">
+            <div className="text-[8px] font-black uppercase tracking-wider text-rose-900 flex items-center gap-1">
+              <AlertTriangle className="w-2.5 h-2.5 text-rose-700 shrink-0" />
+              <span>Section Double-Booked With:</span>
+            </div>
+            {matchingSlots.slice(1).map((ms) => (
+              <div
+                key={ms.id}
+                className="bg-white/95 rounded px-1.5 py-0.5 text-[10px] border border-rose-200/90 shadow-2xs flex items-center justify-between gap-1"
+              >
+                <span className="font-black text-rose-950 truncate">{ms.subject_name || "Class"}</span>
+                <span className="text-rose-800 truncate text-[9px] font-semibold">
+                  {ms.teacher_name || "Faculty"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Room Conflict: Show actual colliding sections */}
         {conflict.hasRoomConflict && clashingRoomSlots.length > 0 && (
           <div className="mt-2 p-1.5 rounded-lg bg-purple-100/95 border border-purple-300 text-purple-950 space-y-1 shadow-2xs">
             <div className="text-[8px] font-black uppercase tracking-wider text-purple-900 flex items-center gap-1">
@@ -735,6 +1022,7 @@ function renderMasterSlotCell(
           </div>
         )}
 
+        {/* Teacher Double-Booking: Show colliding sections */}
         {conflict.hasDoubleBooking && doubleBookedSlots.length > 0 && (
           <div className="mt-2 p-1.5 rounded-lg bg-red-100/95 border border-red-300 text-red-950 space-y-1 shadow-2xs">
             <div className="text-[8px] font-black uppercase tracking-wider text-red-900 flex items-center gap-1">
@@ -762,17 +1050,43 @@ function renderMasterSlotCell(
           </div>
         )}
 
-        {/* Single-slot non-overlap warnings (e.g. >6h cap or locked) */}
-        {!conflict.hasRoomConflict && !conflict.hasDoubleBooking && (
-          <>
+        {/* Faculty On Leave Notification */}
+        {conflict.hasTeacherOnLeave && (
+          <div className="mt-2 p-1.5 rounded-lg bg-amber-100/95 border border-amber-300 text-amber-950 space-y-0.5 shadow-2xs">
+            <div className="text-[8px] font-black uppercase tracking-wider text-amber-900 flex items-center gap-1">
+              <AlertTriangle className="w-2.5 h-2.5 text-amber-700 shrink-0" />
+              <span>Faculty Unavailable:</span>
+            </div>
+            <div className="text-[9px] font-semibold text-amber-900 leading-tight">
+              {teacherName} is currently {teachers.find((t) => t.id === primarySlot.teacher_id)?.status || "on leave"}. Dynamic repair needed.
+            </div>
+          </div>
+        )}
 
-            {conflict.hasDailyOverload && (
-              <div className="mt-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-[8px] font-bold uppercase tracking-wider flex items-center gap-1">
-                <AlertTriangle className="w-2.5 h-2.5 text-amber-700 shrink-0" />
-                <span>{conflict.badgeLabel}</span>
-              </div>
-            )}
-          </>
+        {/* Daily Overload (>6h) Notification */}
+        {conflict.hasDailyOverload && !conflict.hasDoubleBooking && !conflict.hasRoomConflict && (
+          <div className="mt-2 p-1.5 rounded-lg bg-amber-100/95 border border-amber-300 text-amber-950 space-y-0.5 shadow-2xs">
+            <div className="text-[8px] font-black uppercase tracking-wider text-amber-900 flex items-center gap-1">
+              <AlertTriangle className="w-2.5 h-2.5 text-amber-700 shrink-0" />
+              <span>RA 4670 Overload:</span>
+            </div>
+            <div className="text-[9px] font-semibold text-amber-900 leading-tight">
+              {teacherName} has {conflict.dailyHours} teaching hours on this day (cap: 6h).
+            </div>
+          </div>
+        )}
+
+        {/* DepEd DO 009 Homeroom Adviser Mismatch Notification */}
+        {conflict.hasAdviserMismatch && (
+          <div className="mt-2 p-1.5 rounded-lg bg-[#FDF2FA] border border-[#E5CCE3] text-[#703372] space-y-0.5 shadow-2xs">
+            <div className="text-[8px] font-black uppercase tracking-wider text-[#A91079] flex items-center gap-1">
+              <AlertTriangle className="w-2.5 h-2.5 text-[#A91079] shrink-0" />
+              <span>Homeroom Adviser Notice:</span>
+            </div>
+            <div className="text-[9px] font-semibold text-[#703372] leading-tight">
+              DepEd requires class adviser to handle Monday Period 1 Homeroom Guidance.
+            </div>
+          </div>
         )}
       </div>
     </td>
